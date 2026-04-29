@@ -200,6 +200,7 @@ def set_finish_line_from_gps():
     if not gps.is_valid():
         print("SET FINISH LINE: nincs GPS FIX!")
         _beep(400, 500)
+        disp.flash_screen(0xFF0000, 1000)  # piros = nincs GPS fix
         return False
 
     tc = make_track_from_gps(
@@ -240,6 +241,8 @@ def set_finish_line_from_file():
     tc = load_track()
     if tc is None or not tc.is_ready:
         print("SET FINISH LINE FILE: nincs track.json vagy hiányos!")
+        _beep(400, 500)
+        disp.flash_screen(0xFF0000, 1000)  # piros = nincs / hibas track.json
         return False
 
     lap_det.set_mode(MODE_STAGE if tc.is_stage else MODE_CIRCUIT)
@@ -252,6 +255,8 @@ def set_finish_line_from_file():
     predictor.set_sector_count(len(tc.sectors))
     track_cfg = tc
     print("SET FINISH LINE FILE: OK —", tc.name)
+    _beep(1200, 150)
+    disp.flash_screen(0x00FF00, 2000)  # zold = siker
     return True
 
 # ============================================================
@@ -527,7 +532,11 @@ async def touch_task():
                     if disp._mode == 1 and touch_x < 160:   # bal = GPS
                         ok = set_finish_line_from_gps()
                         if ok:
-                            disp._mode = 0   # flash_screen mar force_redraw-t allitott
+                            disp._mode = 0
+                    elif disp._mode == 1 and touch_x >= 160:  # jobb = fajlbol
+                        ok = set_finish_line_from_file()
+                        if ok:
+                            disp._mode = 0
         else:
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
