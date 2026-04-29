@@ -231,7 +231,7 @@ def set_finish_line_from_gps():
 
     # Vizualis visszajelzes: teljes kepernyo 1mp-ig zold
     _beep(1200, 150)
-    disp.flash_screen(0x00FF00, 800)   # zold villanas, sisakbol is lathato
+    disp.flash_screen(0x00FF00, 2000)  # 2mp zold villanas, sisakbol is lathato
     return True
 
 
@@ -502,9 +502,10 @@ async def touch_task():
         Bal oldal (x<160) hosszú (2mp) = GPS 20m rajtvonal
         Jobb oldal (x>=160) rövid      = Fájlból (track.json)
     """
-    held_since  = None
-    touch_x     = 0
-    SET_HOLD_MS = 2000
+    held_since   = None
+    touch_x      = 0
+    SET_HOLD_MS  = 2000
+    action_taken = False   # megakadályozza, hogy az ujj felengedése is triggereljon
 
     while True:
         M5.update()
@@ -512,21 +513,23 @@ async def touch_task():
 
         if touch_count > 0:
             if held_since is None:
-                held_since = time.ticks_ms()
+                held_since   = time.ticks_ms()
+                action_taken = False
                 try:
                     touch_x = M5.Touch.getDetail(0).x
                 except Exception:
                     touch_x = 0
 
-            held_ms = time.ticks_diff(time.ticks_ms(), held_since)
-            if held_ms >= SET_HOLD_MS:
-                if disp._mode == 1 and touch_x < 160:   # bal = GPS
-                    ok = set_finish_line_from_gps()
-                    if ok:
-                        disp._mode = 0   # flash_screen mar force_redraw-t allitott
-                held_since = None
+            if not action_taken:
+                held_ms = time.ticks_diff(time.ticks_ms(), held_since)
+                if held_ms >= SET_HOLD_MS:
+                    action_taken = True
+                    if disp._mode == 1 and touch_x < 160:   # bal = GPS
+                        ok = set_finish_line_from_gps()
+                        if ok:
+                            disp._mode = 0   # flash_screen mar force_redraw-t allitott
         else:
-            if held_since is not None:
+            if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms < SET_HOLD_MS:
                     if disp._mode == 1 and touch_x >= 160:   # jobb = fájl
@@ -536,7 +539,8 @@ async def touch_task():
                             disp._force_redraw = True
                     else:
                         disp.next_mode()
-            held_since = None
+            held_since   = None
+            action_taken = False
 
         await asyncio.sleep_ms(50)    # 20 Hz
 
