@@ -89,7 +89,12 @@ class MotoDisplay:
         self._force_redraw = True
 
     def next_mode(self):
-        self._mode = (self._mode + 1) % 4
+        # SETUP (1) kimarad a normál körből: MAIN→STATS→DIAG→MAIN
+        cycle = [MODE_MAIN, MODE_STATS, MODE_DIAG]
+        if self._mode in cycle:
+            self._mode = cycle[(cycle.index(self._mode) + 1) % 3]
+        else:
+            self._mode = MODE_MAIN
         self._force_redraw = True
         self._clear_cache()
 
