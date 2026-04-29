@@ -81,7 +81,7 @@ class MotoDisplay:
         lcd.fillScreen(BLACK)
         lcd.setTextColor(CYAN, BLACK)
         lcd.setTextSize(3)
-        lcd.drawString("OverLap", 75, 85)
+        lcd.drawString("OverLAP", 75, 85)
         lcd.setTextColor(GRAY, BLACK)
         lcd.setTextSize(1)
         lcd.drawString("v0.1  Lap Timing Platform", 55, 130)
