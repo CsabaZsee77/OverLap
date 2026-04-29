@@ -1,0 +1,63 @@
+services:
+
+  # ── Backend API ──────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: motometer_backend
+    restart: unless-stopped
+    environment:
+      - MOTOMETER_DB=/data/motometer.db
+    volumes:
+      - motometer_data:/data
+    networks:
+      - motometer_net
+    # Nem publikál portot kifelé — nginx proxyzza
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend (statikus build) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: motometer_frontend
+    restart: unless-stopped
+    networks:
+      - motometer_net
+    expose:
+      - "80"
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: motometer_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/motometer.conf:/etc/nginx/conf.d/motometer.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - motometer_net
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  motometer_data:
+  nginx_logs:
+
+networks:
+  motometer_net:
+    driver: bridge

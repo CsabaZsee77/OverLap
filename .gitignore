@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Database & logs
+*.db
+*.log
+*.sqlite
+
+# Environment
+.env
+.env.local
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+
+# Claude internal
+.claude/
+memory/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
