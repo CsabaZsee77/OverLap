@@ -7,7 +7,7 @@
 #   - Sikeres feltöltés után a fájl törlésre kerül
 #
 # Fájlrendszer stratégia:
-#   /sd/motometer_logs/  → elsődleges (SD kártya)
+#   /sd/overlap_logs/  → elsődleges (SD kártya)
 #   /flash/mm_logs/      → fallback (belső flash, ~500 KB szabad)
 #
 # Egy session = egy JSON fájl:
@@ -39,7 +39,7 @@ import time
 
 
 # Log könyvtárak (prioritás sorrendben)
-_LOG_DIRS = ['/sd/motometer_logs', '/flash/mm_logs']
+_LOG_DIRS = ['/sd/overlap_logs', '/flash/mm_logs']
 # Max trace pont / kör (memóriavédelem: ~5 KB/kör 10 Hz-en)
 MAX_TRACE_POINTS = 600
 

@@ -7,7 +7,7 @@
 
 import time
 from machine import UART, Pin
-from motometer.kalman import KalmanFilter
+from overlap.kalman import KalmanFilter
 
 # AT6558 parancsok
 _CMD_10HZ = b'$PMTK220,100*2F\r\n'   # 10 Hz frissítési sebesség

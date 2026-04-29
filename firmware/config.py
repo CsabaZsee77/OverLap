@@ -58,7 +58,7 @@ SD_MOSI  = 37
 SD_MISO  = 35
 SD_CS    = 4
 SD_MOUNT = '/sd'
-LOG_DIR  = '/sd/motometer_logs'
+LOG_DIR  = '/sd/overlap_logs'
 
 # ============================================================
 # WIFI

@@ -42,7 +42,7 @@ try:
     sd_available = True
     print("SD: mounted at /sd")
     try:
-        os.mkdir('/sd/motometer_logs')
+        os.mkdir('/sd/overlap_logs')
     except OSError:
         pass
 except Exception as e:
@@ -51,7 +51,7 @@ except Exception as e:
 # ============================================================
 # KONFIGURÁCIÓ
 # ============================================================
-from motometer import config
+from overlap import config
 
 # Device ID generálás MAC-ból
 if not config.DEVICE_ID:
@@ -68,15 +68,15 @@ print("Device ID:", config.DEVICE_ID)
 # MODULOK
 # ============================================================
 print("Loading modules...")
-from motometer.gps          import GPSSensor
-from motometer.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
-from motometer.sector       import SectorDetector
-from motometer.delta        import LapPredictor
-from motometer.display      import MotoDisplay
-from motometer.track_loader import load_track, save_track, make_track_from_gps
-from motometer.logger       import SessionLogger
-from motometer.uplink       import Uplink
-from motometer.telegram     import TelegramNotifier
+from overlap.gps          import GPSSensor
+from overlap.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
+from overlap.sector       import SectorDetector
+from overlap.delta        import LapPredictor
+from overlap.display      import MotoDisplay
+from overlap.track_loader import load_track, save_track, make_track_from_gps
+from overlap.logger       import SessionLogger
+from overlap.uplink       import Uplink
+from overlap.telegram     import TelegramNotifier
 print("Modules OK")
 
 # ============================================================
@@ -287,7 +287,7 @@ async def gps_task():
 
             # ── Kör indulás detektálása ──────────────────────
             # Ha STATE_WAITING → STATE_IN_LAP váltott, start_lap() kell
-            from motometer.lap import STATE_IN_LAP
+            from overlap.lap import STATE_IN_LAP
             if lap_det.get_state() == STATE_IN_LAP and lap_start_ts is None:
                 lap_start_ts = ts
                 sec_det.start_lap(ts)
