@@ -520,9 +520,9 @@ async def touch_task():
                 held_since   = time.ticks_ms()
                 action_taken = False
                 try:
-                    touch_x = M5.Touch.getDetail(0).x
+                    touch_x = M5.Touch.getX()
                 except Exception:
-                    touch_x = 0
+                    touch_x = 160
 
             if not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
