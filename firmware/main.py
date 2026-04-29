@@ -135,9 +135,8 @@ else:
 # BOOT KÉPERNYŐ
 # ============================================================
 disp.begin()
-if not lap_det.has_finish_line():
-    disp._mode = 1          # MODE_SETUP
-    disp._force_redraw = True
+disp._mode = 1              # Mindig SETUP-pal indul
+disp._force_redraw = True
 
 # ============================================================
 # GPS INIT
@@ -541,11 +540,14 @@ async def touch_task():
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms < SET_HOLD_MS:
-                    if disp._mode == 1 and touch_x >= 160:   # jobb = fájl
+                    if disp._mode == 1 and touch_x >= 160:   # jobb rövid = fájl
                         ok = set_finish_line_from_file()
                         if ok:
                             disp._mode = 0
                             disp._force_redraw = True
+                    elif disp._mode == 1:                     # bal rövid SETUP-ban = időmérő
+                        disp._mode = 0
+                        disp._force_redraw = True
                     else:
                         disp.next_mode()
             held_since   = None
