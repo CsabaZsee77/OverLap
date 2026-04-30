@@ -101,6 +101,7 @@ battery_pct       = None
 track_cfg         = None
 session_started   = False
 lap_start_ts      = None
+lap_history       = []   # befejezett körök listája (kijelző görgetéshez)
 telegram_queue    = []   # el nem küldött körök puffere
 telegram_sent     = set()  # már elküldött kör számai (deduplikáció)
 
@@ -314,7 +315,7 @@ def _on_sector_complete(result):
 
 def _on_lap_complete(result, ts):
     """Köridő rögzítésekor — log + uplink + telegram sor."""
-    global lap_start_ts, lap_max_speed_kmh, prev_lap_max_kmh
+    global lap_start_ts, lap_max_speed_kmh, prev_lap_max_kmh, lap_history
 
     print("LAP #{}: {:.3f}s  {}  delta={:+.3f}s".format(
         result.lap_number,
@@ -339,6 +340,16 @@ def _on_lap_complete(result, ts):
     prev_lap_max_kmh = this_lap_max
     lap_max_speed_kmh = 0.0
 
+    # Kor hozzaadasa a kijelzo listahoz (max 10 kor)
+    lap_history.append({
+        'lap_number':  result.lap_number,
+        'lap_time_ms': result.lap_time_ms,
+        'max_speed_kmh': this_lap_max,
+        'is_best':     result.is_best,
+    })
+    if len(lap_history) > 10:
+        lap_history.pop(0)
+
     # Mentés loggerbe
     logger.add_lap(
         lap_number      = result.lap_number,
@@ -354,7 +365,7 @@ def _on_lap_complete(result, ts):
     telegram_queue.append({
         'lap_number':      result.lap_number,
         'lap_time_ms':     result.lap_time_ms,
-        'prev_lap_ms':     prev_lap_ms,
+        'delta_ms':        result.delta_ms,
         'is_best':         result.is_best,
         'max_speed_kmh':   this_lap_max,
         'sector_times_ms': sector_times_ms,
@@ -442,6 +453,7 @@ async def display_task():
             battery_pct       = battery_pct,
             lap_start_ts      = lap_start_ts,
             prev_lap_max_kmh  = prev_lap_max_kmh,
+            lap_history       = lap_history,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
 

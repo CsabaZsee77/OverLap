@@ -59,16 +59,12 @@ class MotoDisplay:
         self._lcd = lcd
         self._mode = MODE_MAIN
 
-        self._c_prev_lap   = None
-        self._c_best_lap   = None
-        self._c_predicted  = None
-        self._c_delta      = None
-        self._c_max_speed  = None
-        self._c_gps_str    = None
-        self._c_wifi       = None
-        self._c_batt       = None
-        self._c_mode       = None
-        self._c_prev_max   = None
+        self._c_best_lap        = None
+        self._c_max_speed       = None
+        self._c_gps_str         = None
+        self._c_wifi            = None
+        self._c_batt            = None
+        self._c_lap_history_len = None
 
         self._force_redraw = True
 
@@ -107,11 +103,12 @@ class MotoDisplay:
 
     def update(self, gps, lap_detector, max_speed_kmh=0.0,
                wifi_connected=False, predicted_ms=None, prev_lap_ms=None,
-               battery_pct=None, lap_start_ts=None, prev_lap_max_kmh=None):
+               battery_pct=None, lap_start_ts=None, prev_lap_max_kmh=None,
+               lap_history=None):
         if self._mode == MODE_MAIN:
             self._draw_main(gps, lap_detector, max_speed_kmh,
                             wifi_connected, predicted_ms, prev_lap_ms,
-                            battery_pct, lap_start_ts, prev_lap_max_kmh)
+                            battery_pct, lap_start_ts, lap_history=lap_history)
         elif self._mode == MODE_SETUP:
             self._draw_setup(gps, wifi_connected, battery_pct)
         elif self._mode == MODE_STATS:
@@ -120,40 +117,31 @@ class MotoDisplay:
             self._draw_diag(gps, wifi_connected, battery_pct)
 
     # ------------------------------------------------------------------
-    # MODE_MAIN
+    # MODE_MAIN  (320x240)
     #
-    # y=0-15    statuszsor (GPS, WiFi, akku, mod)
-    # y=16      elvalaszto vonal
-    # y=20      "STOPPER" felirat (size 1)
-    # y=28-75   nagy futo szamlalo (size 5, CYAN ha aktiv, sotet ha nem)
-    # y=105     elvalaszto vonal
-    # y=110     BEST | ELOZO cimkek (size 2, szurke)
-    # y=128     BEST ertek (sarga) | ELOZO ertek (feher)
-    # y=152     DELTA ertek (szines) | PRED ertek (feher)
-    # y=192     elvalaszto vonal
-    # y=198     MAX sebesseg (narancs)
+    # y=0-15    statuszsor
+    # y=16      elvalaszto
+    # y=17-74   STOPPER szekció: bal=futo ido, jobb=pred (size 3)
+    # y=75      elvalaszto
+    # y=76-183  LAPS szekció: legutolso kor (size 3) + 2 regi kor (size 2)
+    # y=184     elvalaszto
+    # y=185-239 BOTTOM: BEST bal | SESSION MAX jobb (size 2)
     # ------------------------------------------------------------------
 
     def _draw_main(self, gps, lap_det, max_spd, wifi, predicted_ms,
                    prev_lap_ms=None, battery_pct=None, lap_start_ts=None,
-                   prev_lap_max_kmh=None):
+                   prev_lap_max_kmh=None, lap_history=None):
         lcd = self._lcd
+        if lap_history is None:
+            lap_history = []
 
         best_lap_ms = lap_det.get_best_lap_ms()
         gps_str     = gps.get_status_str()
 
-        # Futo stopper szamitasa
         if lap_start_ts is not None:
             elapsed_ms = max(0, time.ticks_diff(time.ticks_ms(), lap_start_ts))
         else:
             elapsed_ms = None
-
-        # Delta (pred vs best, vagy elozo vs best)
-        delta_ms = None
-        if predicted_ms is not None and best_lap_ms is not None:
-            delta_ms = predicted_ms - best_lap_ms
-        elif prev_lap_ms is not None and best_lap_ms is not None:
-            delta_ms = prev_lap_ms - best_lap_ms
 
         if self._force_redraw:
             lcd.fillScreen(BLACK)
@@ -168,50 +156,58 @@ class MotoDisplay:
             self._c_wifi    = wifi
             self._c_batt    = battery_pct
 
-        # Futo stopper — mindig ujrarajzol (mindig valtozik)
-        self._draw_stopper(elapsed_ms)
+        # Stopper + pred — mindig ujrarajzol
+        self._draw_stopper_and_pred(elapsed_ms, predicted_ms)
 
-        # BEST + ELOZO (és ELOZO max sebesseg)
-        if (best_lap_ms != self._c_best_lap or prev_lap_ms != self._c_prev_lap
-                or prev_lap_max_kmh != self._c_prev_max):
-            self._draw_best_and_prev(best_lap_ms, prev_lap_ms, prev_lap_max_kmh)
-            self._c_best_lap = best_lap_ms
-            self._c_prev_lap = prev_lap_ms
-            self._c_prev_max = prev_lap_max_kmh
+        # Kor-lista (csak uj kor vagy best-valtozaskor)
+        hist_len = len(lap_history)
+        hist_changed = (hist_len != self._c_lap_history_len or best_lap_ms != self._c_best_lap)
+        if hist_changed:
+            self._draw_lap_rows(lap_history, best_lap_ms)
+            self._c_lap_history_len = hist_len
+            self._c_best_lap        = best_lap_ms
 
-        # DELTA + PRED
-        if delta_ms != self._c_delta or predicted_ms != self._c_predicted:
-            self._draw_pred_delta(delta_ms, predicted_ms)
-            self._c_delta     = delta_ms
-            self._c_predicted = predicted_ms
-
-        # MAX sebesseg
-        if max_spd != self._c_max_speed:
-            self._draw_bottom_row(max_spd)
+        # BOTTOM: best + session max
+        if hist_changed or max_spd != self._c_max_speed:
+            self._draw_bottom_row(best_lap_ms, max_spd)
             self._c_max_speed = max_spd
 
     def _draw_main_static(self):
         lcd = self._lcd
-        lcd.drawLine(0, 16,  320, 16,  DARK_GRAY)
-        lcd.drawLine(0, 105, 320, 105, DARK_GRAY)
-        lcd.drawLine(0, 192, 320, 192, DARK_GRAY)
+        lcd.drawLine(0,   16,  320, 16,  DARK_GRAY)  # statuszsor alatt
+        lcd.drawLine(0,   84,  320, 84,  DARK_GRAY)  # stopper alatt (size 4 miatt magasabb)
+        lcd.drawLine(0,   190, 320, 190, DARK_GRAY)  # laps szekció alatt
 
         lcd.setTextSize(1)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("STOPPER", 4, 20)
+        lcd.drawString("STOPPER", 4, 19)
+        lcd.drawString("PRED", 220, 19)
+        lcd.drawString("LAPS", 4, 87)
 
-    def _draw_stopper(self, elapsed_ms):
+    def _draw_stopper_and_pred(self, elapsed_ms, predicted_ms):
         lcd = self._lcd
-        lcd.fillRect(0, 27, 320, 76, BLACK)
-        lcd.setTextSize(5)
+        lcd.fillRect(0, 27, 320, 55, BLACK)
+
+        # BAL: futo stopper — size 4 (24px/char, 32px tall)
+        lcd.setTextSize(4)
         if elapsed_ms is None:
             lcd.setTextColor(DARK_GRAY, BLACK)
             text = "--:--.--"
         else:
             lcd.setTextColor(CYAN, BLACK)
             text = _format_lap(elapsed_ms)
-        x = max(4, (320 - len(text) * 30) // 2)
-        lcd.drawString(text, x, 30)
+        lcd.drawString(text, 4, 31)
+
+        # JOBB: prediktiv koridő — size 3, jobb szelen igazítva
+        lcd.setTextSize(3)
+        if predicted_ms is None:
+            lcd.setTextColor(DARK_GRAY, BLACK)
+            ptext = "--:--.--"
+        else:
+            lcd.setTextColor(WHITE, BLACK)
+            ptext = _format_lap(predicted_ms)
+        px = 320 - len(ptext) * 18 - 4
+        lcd.drawString(ptext, px, 35)  # y+4: vertikalisan kozepon (size 4=32, size 3=24)
 
     def _draw_status_bar(self, gps_str, wifi, battery_pct=None):
         lcd = self._lcd
@@ -234,60 +230,104 @@ class MotoDisplay:
         lcd.setTextColor(GRAY, DIM_GRAY)
         lcd.drawString(MODE_NAMES.get(self._mode, ""), 270, 3)
 
-    def _draw_best_and_prev(self, best_ms, prev_ms, prev_max_kmh=None):
+    def _draw_lap_rows(self, lap_history, best_lap_ms):
+        """
+        LAPS szekció (y=86..183):
+          - legutolso kor: ido size 3, delta+sebesség size 2
+          - 2 regi kor:   ido size 2, delta+sebesség size 1
+        Delta = kor_ido - best_lap (vs best)
+        """
         lcd = self._lcd
-        # Harom sor kell: cimkek + idok + max sebesseg → 50 px
-        lcd.fillRect(0, 106, 320, 50, BLACK)
+        lcd.fillRect(0, 95, 320, 95, BLACK)
 
-        # Cimkek (size 1)
+        # ── Legutolso kor (size 4) ────────────────────────────
+        last_lap = lap_history[-1] if lap_history else None
+        if last_lap:
+            lap_ms  = last_lap.get('lap_time_ms')
+            max_spd = last_lap.get('max_speed_kmh')
+            is_best = (lap_ms is not None and best_lap_ms is not None
+                       and lap_ms == best_lap_ms)
+
+            # Koridő (size 4, 32px tall)
+            lcd.setTextSize(4)
+            lcd.setTextColor(YELLOW if is_best else WHITE, BLACK)
+            lcd.drawString(_format_lap(lap_ms), 4, 97)
+
+            # Delta (size 2, vertikalisan kozepon: y+8)
+            lcd.setTextSize(2)
+            if best_lap_ms is not None and lap_ms is not None:
+                if is_best:
+                    lcd.setTextColor(YELLOW, BLACK)
+                    lcd.drawString("BEST", 176, 105)
+                else:
+                    d = lap_ms - best_lap_ms
+                    lcd.setTextColor(GREEN if d <= 0 else RED, BLACK)
+                    lcd.drawString("{}s".format(_format_delta(d)), 176, 105)
+
+            # Max sebesség (size 2, vertikalisan kozepon)
+            if max_spd is not None and max_spd > 0:
+                lcd.setTextColor(ORANGE, BLACK)
+                lcd.drawString("{:.0f}".format(max_spd), 254, 105)
+                lcd.setTextSize(1)
+                lcd.setTextColor(GRAY, BLACK)
+                lcd.drawString("km/h", 290, 109)
+
+        # ── Regi korok: legfeljebb 2 sor (size 2 ido, size 1 delta+spd) ──
+        older = lap_history[:-1][-2:][::-1] if len(lap_history) > 1 else []
+        for i, lap in enumerate(older):
+            y       = 138 + i * 22
+            lap_ms  = lap.get('lap_time_ms')
+            max_spd = lap.get('max_speed_kmh')
+            lap_num = lap.get('lap_number', 0)
+            is_best = (lap_ms is not None and best_lap_ms is not None
+                       and lap_ms == best_lap_ms)
+
+            # Korszam (size 1)
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("#{:2d}".format(lap_num), 2, y + 4)
+
+            # Koridő (size 2)
+            lcd.setTextSize(2)
+            lcd.setTextColor(YELLOW if is_best else WHITE, BLACK)
+            lcd.drawString(_format_lap(lap_ms), 20, y)
+
+            # Delta (size 1, vertikalisan kozepon)
+            lcd.setTextSize(1)
+            if best_lap_ms is not None and lap_ms is not None:
+                if is_best:
+                    lcd.setTextColor(YELLOW, BLACK)
+                    lcd.drawString("BEST", 115, y + 4)
+                else:
+                    d = lap_ms - best_lap_ms
+                    lcd.setTextColor(GREEN if d <= 0 else RED, BLACK)
+                    lcd.drawString("{}s".format(_format_delta(d)), 115, y + 4)
+
+            # Max sebesség (size 1)
+            if max_spd is not None and max_spd > 0:
+                lcd.setTextSize(1)
+                lcd.setTextColor(ORANGE, BLACK)
+                lcd.drawString("{:.0f}km/h".format(max_spd), 250, y + 4)
+
+    def _draw_bottom_row(self, best_lap_ms, max_spd):
+        lcd = self._lcd
+        lcd.fillRect(0, 191, 320, 49, BLACK)
+
+        # BEST (bal)
         lcd.setTextSize(1)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("BEST", 4, 109)
-        lcd.drawString("ELOZO", 180, 109)
-
-        # Idok (size 2)
+        lcd.drawString("BEST LAP", 6, 202)
         lcd.setTextSize(2)
         lcd.setTextColor(YELLOW, BLACK)
-        lcd.drawString(_format_lap(best_ms), 4, 119)
-        lcd.setTextColor(WHITE, BLACK)
-        lcd.drawString(_format_lap(prev_ms), 180, 119)
+        lcd.drawString(_format_lap(best_lap_ms), 6, 212)
 
-        # Elozo kor max sebessege (size 1, narancs)
-        if prev_max_kmh is not None and prev_max_kmh > 0:
-            lcd.setTextSize(1)
-            lcd.setTextColor(ORANGE, BLACK)
-            lcd.drawString("{:.0f} km/h".format(prev_max_kmh), 180, 138)
-
-    def _draw_pred_delta(self, delta_ms, predicted_ms):
-        lcd = self._lcd
-        # A BEST/ELOZO sor most 3 soros (y=106..156), ezert DELTA/PRED lejjebb
-        lcd.fillRect(0, 156, 320, 36, BLACK)
-        lcd.setTextSize(2)
-
-        # DELTA (bal)
-        if delta_ms is None:
-            lcd.setTextColor(GRAY, BLACK)
-            lcd.drawString("DELTA ---", 4, 159)
-        else:
-            color = GREEN if delta_ms <= 0 else RED
-            lcd.setTextColor(color, BLACK)
-            lcd.drawString("DELTA {}s".format(_format_delta(delta_ms)), 4, 159)
-
-        # PRED (jobb)
-        lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("PRED", 190, 159)
-        lcd.setTextColor(WHITE, BLACK)
-        lcd.drawString(_format_lap(predicted_ms), 190, 175)
-
-    def _draw_bottom_row(self, max_spd):
-        lcd = self._lcd
-        lcd.fillRect(0, 193, 320, 47, BLACK)
+        # SESSION MAX (jobb)
         lcd.setTextSize(1)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("SESSION MAX", 6, 196)
+        lcd.drawString("SESSION MAX", 190, 202)
         lcd.setTextSize(2)
         lcd.setTextColor(ORANGE, BLACK)
-        lcd.drawString("{:.0f} km/h".format(max_spd), 6, 206)
+        lcd.drawString("{:.0f} km/h".format(max_spd), 190, 212)
 
     # ------------------------------------------------------------------
     # MODE_SETUP
@@ -412,9 +452,10 @@ class MotoDisplay:
         lcd.drawString("LAT:", 10, 57)
         lcd.drawString("LON:", 10, 72)
         lcd.drawString("SPD:", 10, 87)
-        lcd.drawString("SAT:", 10, 102)
-        lcd.drawString("FIX:", 10, 117)
-        lcd.drawString("WiFi:", 10, 132)
+        lcd.drawString("CRS:", 10, 102)
+        lcd.drawString("SAT:", 10, 117)
+        lcd.drawString("FIX:", 10, 132)
+        lcd.drawString("WiFi:", 10, 147)
 
         self._update_diag_dynamic(gps, wifi, battery_pct)
         self._force_redraw = False
@@ -422,31 +463,29 @@ class MotoDisplay:
     def _update_diag_dynamic(self, gps, wifi, battery_pct=None):
         lcd = self._lcd
         self._draw_status_bar(gps.get_status_str(), wifi, battery_pct)
-        lcd.fillRect(70, 54, 250, 95, BLACK)
+        lcd.fillRect(70, 54, 250, 110, BLACK)
         lcd.setTextSize(1)
         lcd.setTextColor(WHITE, BLACK)
         lcd.drawString("{:.6f}".format(gps.lat), 70, 57)
         lcd.drawString("{:.6f}".format(gps.lon), 70, 72)
         lcd.drawString("{:.1f} km/h".format(gps.speed_kmh), 70, 87)
-        lcd.drawString(str(gps.sats), 70, 102)
+        lcd.drawString("{:.1f} deg".format(gps.course), 70, 102)
+        lcd.drawString(str(gps.sats), 70, 117)
         fix_c = GREEN if gps.is_valid() else RED
         lcd.setTextColor(fix_c, BLACK)
-        lcd.drawString("OK" if gps.is_valid() else "NO FIX", 70, 117)
+        lcd.drawString("OK" if gps.is_valid() else "NO FIX", 70, 132)
         wifi_c = GREEN if wifi else RED
         lcd.setTextColor(wifi_c, BLACK)
-        lcd.drawString("CONNECTED" if wifi else "OFFLINE", 70, 132)
+        lcd.drawString("CONNECTED" if wifi else "OFFLINE", 70, 147)
 
     # ------------------------------------------------------------------
     # Seged
     # ------------------------------------------------------------------
 
     def _clear_cache(self):
-        self._c_prev_lap  = None
-        self._c_best_lap  = None
-        self._c_predicted = None
-        self._c_delta     = None
-        self._c_max_speed = None
-        self._c_gps_str   = None
-        self._c_wifi      = None
-        self._c_batt      = None
-        self._c_prev_max  = None
+        self._c_best_lap        = None
+        self._c_max_speed       = None
+        self._c_gps_str         = None
+        self._c_wifi            = None
+        self._c_batt            = None
+        self._c_lap_history_len = None

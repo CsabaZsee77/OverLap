@@ -21,9 +21,9 @@ class TelegramNotifier:
     def is_enabled(self):
         return self._enabled
 
-    def send_lap(self, lap_number, lap_time_ms, prev_lap_ms=None,
+    def send_lap(self, lap_number, lap_time_ms, delta_ms=None,
                  is_best=False, max_speed_kmh=0.0, sector_times_ms=None,
-                 track_name=''):
+                 track_name='', prev_lap_ms=None):
         """Köridő értesítés küldése."""
         if not self._enabled:
             return False
@@ -38,11 +38,10 @@ class TelegramNotifier:
         lines.append('Kor #{}: {}{}'.format(
             lap_number, time_str, '  LEGJOBB!' if is_best else ''))
 
-        if prev_lap_ms and not is_best:
-            delta = lap_time_ms - prev_lap_ms
-            sign  = '+' if delta >= 0 else '-'
-            lines.append('Delta: {}{:.3f}s'.format(
-                sign, abs(delta) / 1000.0))
+        if delta_ms is not None and delta_ms != 0:
+            sign = '+' if delta_ms > 0 else ''
+            lines.append('Delta: {}{:.3f}s (vs legjobb)'.format(
+                sign, delta_ms / 1000.0))
 
         if max_speed_kmh:
             lines.append('Max sebesseg: {:.0f} km/h'.format(max_speed_kmh))

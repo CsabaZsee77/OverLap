@@ -2,8 +2,8 @@
   "name": "Kakucs Ring",
   "track_type": "circuit",
   "finish_line": {
-    "lat1": 47.246053, "lon1": 19.377900,
-    "lat2": 47.246395, "lon2": 19.378474
+    "lat1": 47.425734, "lon1": 19.146040,
+    "lat2": 47.425814, "lon2": 19.146142
   },
   "sectors": []
 }
