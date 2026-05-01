@@ -86,6 +86,18 @@ TELEGRAM_BOT_TOKEN = '8630230971:AAFe_XwgznHmNfzE5Kq_P7kcD7-DFkGZUHs'
 TELEGRAM_CHAT_ID   = '8133479839'
 
 # ============================================================
+# IMU BACKEND
+# ============================================================
+# 'bmi270'  — beépített CoreS3 szenzor (M5Unified API)
+# 'mpu6886' — külső MPU6886 I2C (Grove Port A)
+IMU_BACKEND     = 'mpu6886'
+IMU_I2C_SDA     = 2      # Grove Port A SDA (CoreS3)
+IMU_I2C_SCL     = 1      # Grove Port A SCL (CoreS3)
+# Ha a szenzor fordítva van felszerelve (kábelkivezetés ellenkezőszélen),
+# állítsd True-ra — megfordítja a dőlésszög előjelét és a gyro integrálást.
+IMU_LEAN_INVERT = False
+
+# ============================================================
 # KIJELZŐ
 # ============================================================
 DISPLAY_BRIGHTNESS = 80   # % (0–100)

@@ -581,9 +581,6 @@ async def touch_task():
                     if disp._mode == 1:   # SETUP-ban bármilyen rövid érintés = időmérő
                         disp._mode = 0
                         disp._force_redraw = True
-                    elif disp._mode == MODE_CALIB:  # CALIB rövid érintés = vissza IMU-ra
-                        disp._mode = MODE_IMU
-                        disp._force_redraw = True
                     else:
                         disp.next_mode()
             held_since   = None
