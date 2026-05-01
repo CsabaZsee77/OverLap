@@ -2,6 +2,7 @@
 # MotoMeter v0.1 - M5Stack CoreS3
 
 import time
+import math
 
 # ============================================================
 # SZINEK
@@ -16,6 +17,9 @@ CYAN       = 0x00FFFF
 GRAY       = 0x888888
 DARK_GRAY  = 0x333333
 DIM_GRAY   = 0x1A1A1A
+SKY_BLUE   = 0x003366
+GROUND_BRN = 0x4B2800
+PEAK_COLOR = 0xFF6600   # narancssárga — peak hold mutatók
 
 # ============================================================
 # KEPERNYO MODOK
@@ -24,12 +28,16 @@ MODE_MAIN        = 0
 MODE_SETUP       = 1
 MODE_STATS       = 2
 MODE_DIAG        = 3
+MODE_IMU         = 4
+MODE_CALIB       = 5
 
 MODE_NAMES = {
     MODE_MAIN:  "MAIN",
     MODE_SETUP: "SETUP",
     MODE_STATS: "STATS",
     MODE_DIAG:  "DIAG",
+    MODE_IMU:   "LEAN",
+    MODE_CALIB: "CALIB",
 }
 
 
@@ -85,10 +93,10 @@ class MotoDisplay:
         self._force_redraw = True
 
     def next_mode(self):
-        # MAIN → STATS → DIAG → SETUP → MAIN
-        cycle = [MODE_MAIN, MODE_STATS, MODE_DIAG, MODE_SETUP]
+        # MAIN → IMU → CALIB → STATS → DIAG → SETUP → MAIN
+        cycle = [MODE_MAIN, MODE_IMU, MODE_CALIB, MODE_STATS, MODE_DIAG, MODE_SETUP]
         if self._mode in cycle:
-            self._mode = cycle[(cycle.index(self._mode) + 1) % 4]
+            self._mode = cycle[(cycle.index(self._mode) + 1) % len(cycle)]
         else:
             self._mode = MODE_MAIN
         self._force_redraw = True
@@ -104,7 +112,7 @@ class MotoDisplay:
     def update(self, gps, lap_detector, max_speed_kmh=0.0,
                wifi_connected=False, predicted_ms=None, prev_lap_ms=None,
                battery_pct=None, lap_start_ts=None, prev_lap_max_kmh=None,
-               lap_history=None):
+               lap_history=None, lean=None):
         if self._mode == MODE_MAIN:
             self._draw_main(gps, lap_detector, max_speed_kmh,
                             wifi_connected, predicted_ms, prev_lap_ms,
@@ -115,6 +123,10 @@ class MotoDisplay:
             self._draw_stats(gps, lap_detector, max_speed_kmh, wifi_connected, battery_pct)
         elif self._mode == MODE_DIAG:
             self._draw_diag(gps, wifi_connected, battery_pct)
+        elif self._mode == MODE_IMU:
+            self._draw_imu(gps, wifi_connected, battery_pct, lean)
+        elif self._mode == MODE_CALIB:
+            self._draw_calib(gps, wifi_connected, battery_pct, lean)
 
     # ------------------------------------------------------------------
     # MODE_MAIN  (320x240)
@@ -477,6 +489,240 @@ class MotoDisplay:
         wifi_c = GREEN if wifi else RED
         lcd.setTextColor(wifi_c, BLACK)
         lcd.drawString("CONNECTED" if wifi else "OFFLINE", 70, 147)
+
+    # ------------------------------------------------------------------
+    # MODE_IMU  (320x240)
+    #
+    # y=0-15    státuszsor
+    # y=16      elválasztó
+    # y=17-37   fejléc: szög + G érték
+    # y=38-215  körbe zárt műhorizont (r=88, cx=160, cy=127)
+    #           - scan-line kitöltés a körön belül (ég/talaj)
+    #           - fehér kör kerület + fokjelzők a peremén
+    #           - narancssárga peak tick-ek a peremén
+    #           - fix referencia kereszt középen
+    # y=216-239 alap: "BAL MAX: 34°  |  JOBB MAX: 28°"
+    # ------------------------------------------------------------------
+
+    _IMU_CX = 160
+    _IMU_CY = 127
+    _IMU_R  = 88
+
+    def _draw_imu(self, gps, wifi, battery_pct, lean):
+        lcd = self._lcd
+
+        if self._force_redraw:
+            lcd.fillScreen(BLACK)
+            lcd.drawLine(0, 16,  320, 16,  DARK_GRAY)
+            lcd.drawLine(0, 216, 320, 216, DARK_GRAY)
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("LEAN", 4, 25)
+            self._force_redraw = False
+
+        self._draw_status_bar(gps.get_status_str(), wifi, battery_pct)
+
+        angle      = lean.angle      if lean else 0.0
+        peak_right = lean.peak_right if lean else 0.0
+        peak_left  = lean.peak_left  if lean else 0.0
+        lat_g      = lean.lateral_g  if lean else 0.0
+
+        # ── Fejléc: szög + G ────────────────────────────────────────────
+        lcd.fillRect(50, 19, 270, 16, BLACK)
+        lcd.setTextSize(2)
+        sign = '+' if angle >= 0 else ''
+        lcd.setTextColor(WHITE, BLACK)
+        lcd.drawString("{}{:.1f}d".format(sign, angle), 65, 19)
+        lcd.setTextColor(ORANGE, BLACK)
+        lcd.drawString("{:.2f}G".format(abs(lat_g)), 210, 19)
+
+        # ── Kör alakú műhorizont ─────────────────────────────────────────
+        self._draw_circular_horizon(lcd, angle, peak_left, peak_right)
+
+        # ── Alap szekció: peak értékek ───────────────────────────────────
+        lcd.fillRect(0, 217, 320, 23, BLACK)
+        lcd.setTextSize(1)
+        lcd.setTextColor(GRAY, BLACK)
+        lcd.drawString("BAL MAX:", 4, 218)
+        lcd.drawString("JOBB MAX:", 196, 218)
+        lcd.setTextSize(2)
+        lcd.setTextColor(PEAK_COLOR, BLACK)
+        lcd.drawString("{:.1f}d".format(peak_left),  4,  225)
+        lcd.drawString("{:.1f}d".format(peak_right), 196, 225)
+
+    def _draw_circular_horizon(self, lcd, angle, peak_left, peak_right):
+        """
+        Körbe zárt műhorizont, scan-line módszerrel.
+
+        Horizont implicit egyenlete a körön belül:
+          sin_a*(x-cx) - cos_a*(y-cy) = 0
+        Ég (sky) feltétel: sin_a*(x-cx) - cos_a*(y-cy) > 0
+        Ez mindig helyes, még akkor is ha a horizont kilép a körből.
+
+        Peak hold: narancssárga tick jelzők a körkerületen.
+        """
+        cx = self._IMU_CX
+        cy = self._IMU_CY
+        r  = self._IMU_R
+        r2 = r * r
+
+        rad   = math.radians(angle)
+        sin_a = math.sin(rad)
+        cos_a = math.cos(rad)
+
+        # ── Scan-line kitöltés ───────────────────────────────────────────
+        for y in range(cy - r, cy + r + 1):
+            dy = y - cy
+            dx = int(math.sqrt(max(0, r2 - dy * dy)))
+            if dx == 0:
+                continue
+            xl = cx - dx
+            xr = cx + dx
+
+            if abs(sin_a) < 0.02:
+                # Közel vízszintes horizont (angle ≈ 0°)
+                color = SKY_BLUE if dy <= 0 else GROUND_BRN
+                lcd.drawLine(xl, y, xr, y, color)
+                continue
+
+            # Horizont x a sor tengelyén: sin_a*(x-cx) = cos_a*dy → x_h
+            x_h = int(cx + cos_a * dy / sin_a)
+
+            # Ég-e a bal él? Sky feltétel: sin_a*(xl-cx) - cos_a*dy > 0
+            sky_left = (sin_a * (xl - cx) - cos_a * dy) > 0
+
+            if x_h <= xl:
+                # Horizont a körön kívülre esik balra → egész sor egyszínű
+                lcd.drawLine(xl, y, xr, y, SKY_BLUE if sky_left else GROUND_BRN)
+            elif x_h >= xr:
+                # Horizont a körön kívülre esik jobbra → egész sor egyszínű
+                lcd.drawLine(xl, y, xr, y, SKY_BLUE if sky_left else GROUND_BRN)
+            else:
+                # Horizont átmetszi a sort a körön belül
+                if sky_left:
+                    lcd.drawLine(xl, y, x_h - 1, y, SKY_BLUE)
+                    lcd.drawLine(x_h, y, xr, y, GROUND_BRN)
+                else:
+                    lcd.drawLine(xl, y, x_h - 1, y, GROUND_BRN)
+                    lcd.drawLine(x_h, y, xr, y, SKY_BLUE)
+
+        # ── Körkerület ───────────────────────────────────────────────────
+        try:
+            lcd.drawCircle(cx, cy, r, WHITE)
+        except Exception:
+            pass
+
+        # ── Fokjelzők a peremén (-60, -45, -30, 0, +30, +45, +60) ────────
+        for tick_a in (-60, -45, -30, -15, 0, 15, 30, 45, 60):
+            length = 10 if tick_a % 30 == 0 else 5
+            self._rim_tick(lcd, cx, cy, r, tick_a, GRAY, length)
+
+        # ── Peak hold tick-ek ────────────────────────────────────────────
+        if peak_right > 2.0:
+            self._rim_tick(lcd, cx, cy, r, peak_right,  PEAK_COLOR, 14)
+        if peak_left > 2.0:
+            self._rim_tick(lcd, cx, cy, r, -peak_left, PEAK_COLOR, 14)
+
+        # ── Horizont vonal (fehér) a körön belül ─────────────────────────
+        self._circle_line(lcd, cx, cy, r, angle, WHITE)
+
+        # ── Fix referencia kereszt (repülő szimbólum) ────────────────────
+        lcd.drawLine(cx - 35, cy, cx - 12, cy, WHITE)
+        lcd.drawLine(cx + 12, cy, cx + 35, cy, WHITE)
+        lcd.drawLine(cx - 3, cy - 7, cx + 3, cy - 7, WHITE)
+        lcd.drawLine(cx, cy - 7, cx, cy + 3, WHITE)
+        lcd.drawPixel(cx, cy, WHITE)
+
+    def _rim_tick(self, lcd, cx, cy, r, angle_deg, color, length):
+        """Sugárirányú tick jel a körkerületen."""
+        rad   = math.radians(angle_deg)
+        sin_a = math.sin(rad)
+        cos_a = math.cos(rad)
+        x_out = int(cx + r * sin_a)
+        y_out = int(cy - r * cos_a)
+        x_in  = int(cx + (r - length) * sin_a)
+        y_in  = int(cy - (r - length) * cos_a)
+        lcd.drawLine(x_in, y_in, x_out, y_out, color)
+
+    def _circle_line(self, lcd, cx, cy, r, angle_deg, color):
+        """
+        Vízszintes vonalat húz a körön belül, döntve angle_deg-gel.
+        A vonal végpontjai a körkerületen lesznek.
+        """
+        rad   = math.radians(angle_deg)
+        # Normálvektor a horizont vonalhoz (merőleges a dőlés irányára)
+        # A horizont vonal iránya: (cos(angle), sin(angle)) — perpendicular to lean
+        cos_a = math.cos(rad)
+        sin_a = math.sin(rad)
+        # Végpontok: r × irányvektor a kör szélén
+        x1 = int(cx - r * cos_a)
+        y1 = int(cy - r * sin_a)
+        x2 = int(cx + r * cos_a)
+        y2 = int(cy + r * sin_a)
+        lcd.drawLine(x1, y1, x2, y2, color)
+        # Vastagabb vonal: egy párhuzamos eltolva
+        lcd.drawLine(x1, y1 + 1, x2, y2 + 1, color)
+
+    # ------------------------------------------------------------------
+    # MODE_CALIB  (320x240)
+    #
+    # Kalibráció képernyő.
+    # Mutatja a nyers szenzor értékeket és a kalibrált szöget.
+    # Hosszú érintésre (touch_task kezeli) elvégzi a kalibrációt.
+    # ------------------------------------------------------------------
+
+    def _draw_calib(self, gps, wifi, battery_pct, lean):
+        lcd = self._lcd
+
+        if self._force_redraw:
+            lcd.fillScreen(BLACK)
+            lcd.drawLine(0, 16, 320, 16, DARK_GRAY)
+            lcd.drawLine(0, 44, 320, 44, DARK_GRAY)
+
+            lcd.setTextSize(2)
+            lcd.setTextColor(CYAN, BLACK)
+            lcd.drawString("IMU KALIBRÁCIÓ", 35, 22)
+
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Tartsd egyenesbe a motort,", 10, 52)
+            lcd.drawString("majd tartsd 2mp-ig az erintot.", 10, 65)
+
+            lcd.drawLine(0, 80, 320, 80, DARK_GRAY)
+            self._force_redraw = False
+
+        self._draw_status_bar(gps.get_status_str(), wifi, battery_pct)
+        lcd.fillRect(0, 82, 320, 130, BLACK)
+
+        if lean and lean.is_ready:
+            angle = lean.angle
+            lat_g = lean.lateral_g
+
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Aktualis dolés:", 10, 90)
+            lcd.setTextSize(3)
+            sign = '+' if angle >= 0 else ''
+            lcd.setTextColor(WHITE if abs(angle) < 5 else YELLOW, BLACK)
+            lcd.drawString("{}{:.1f} fok".format(sign, angle), 10, 107)
+
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Lateral G:", 10, 143)
+            lcd.setTextColor(ORANGE, BLACK)
+            lcd.drawString("{:.3f} G".format(lat_g), 90, 143)
+
+            lcd.setTextColor(GREEN if abs(angle) < 3 else GRAY, BLACK)
+            lcd.drawString(
+                "OK - egyenes" if abs(angle) < 3 else "Igazitsd ki!", 10, 160)
+        else:
+            lcd.setTextSize(2)
+            lcd.setTextColor(RED, BLACK)
+            lcd.drawString("IMU nem elerheto", 10, 110)
+
+        lcd.setTextSize(1)
+        lcd.setTextColor(DARK_GRAY, BLACK)
+        lcd.drawString("Hosszan: kalibral  |  Roviden: vissza", 10, 225)
 
     # ------------------------------------------------------------------
     # Seged

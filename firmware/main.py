@@ -72,11 +72,12 @@ from overlap.gps          import GPSSensor
 from overlap.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
 from overlap.sector       import SectorDetector
 from overlap.delta        import LapPredictor
-from overlap.display      import MotoDisplay
+from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB
 from overlap.track_loader import load_track, save_track, make_track_from_gps
 from overlap.logger       import SessionLogger
 from overlap.uplink       import Uplink
 from overlap.telegram     import TelegramNotifier
+from overlap.imu          import LeanSensor
 print("Modules OK")
 
 # ============================================================
@@ -90,6 +91,7 @@ disp      = MotoDisplay(M5.Lcd)
 logger    = SessionLogger(sd_available=sd_available)
 uplink    = Uplink(backend_url=config.BACKEND_URL)
 telegram  = TelegramNotifier(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
+lean      = LeanSensor()
 
 # Session állapot
 max_speed_kmh     = 0.0   # session-szintű maximum (soha nem nullázódik)
@@ -138,6 +140,11 @@ else:
 disp.begin()
 disp._mode = 1              # Mindig SETUP-pal indul
 disp._force_redraw = True
+
+# ============================================================
+# IMU INIT
+# ============================================================
+lean.begin()
 
 # ============================================================
 # GPS INIT
@@ -262,6 +269,13 @@ def set_finish_line_from_file():
 # ============================================================
 # ASYNC TASKOK
 # ============================================================
+
+async def imu_task():
+    """IMU dőlésszög mérés — 25 Hz"""
+    while True:
+        lean.update()
+        await asyncio.sleep_ms(40)    # 25 Hz
+
 
 async def gps_task():
     """GPS olvasás + köridő + szektor detektálás — 10 Hz"""
@@ -454,6 +468,7 @@ async def display_task():
             lap_start_ts      = lap_start_ts,
             prev_lap_max_kmh  = prev_lap_max_kmh,
             lap_history       = lap_history,
+            lean              = lean,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
 
@@ -540,20 +555,34 @@ async def touch_task():
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms >= SET_HOLD_MS:
                     action_taken = True
-                    if disp._mode == 1 and touch_x < 160:   # bal = GPS
+                    if disp._mode == 1 and touch_x < 160:   # SETUP bal = GPS
                         ok = set_finish_line_from_gps()
                         if ok:
                             disp._mode = 0
-                    elif disp._mode == 1 and touch_x >= 160:  # jobb = fajlbol
+                    elif disp._mode == 1 and touch_x >= 160:  # SETUP jobb = fajlbol
                         ok = set_finish_line_from_file()
                         if ok:
                             disp._mode = 0
+                    elif disp._mode == MODE_CALIB:   # CALIB hosszú = kalibrálás
+                        ok = lean.calibrate()
+                        if ok:
+                            _beep(1200, 150)
+                            disp.flash_screen(0x003366, 800)   # kék villanas
+                        else:
+                            _beep(400, 500)
+                    elif disp._mode == MODE_IMU:     # IMU hosszú = peak nullázás
+                        lean.reset_peaks()
+                        _beep(1000, 200)
+                        disp._force_redraw = True
         else:
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms < SET_HOLD_MS:
                     if disp._mode == 1:   # SETUP-ban bármilyen rövid érintés = időmérő
                         disp._mode = 0
+                        disp._force_redraw = True
+                    elif disp._mode == MODE_CALIB:  # CALIB rövid érintés = vissza IMU-ra
+                        disp._mode = MODE_IMU
                         disp._force_redraw = True
                     else:
                         disp.next_mode()
@@ -570,6 +599,7 @@ async def touch_task():
 async def main():
     print("Starting async tasks...")
     await asyncio.gather(
+        imu_task(),
         gps_task(),
         display_task(),
         wifi_task(),
