@@ -2,9 +2,9 @@
 
 **Modul:** M03
 **Szint:** L1 – Üzleti Folyamat
-**Verzió:** v0.2.0
+**Verzió:** v0.4.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-04-28
+**Utolsó módosítás:** 2026-05-03
 **Státusz:** ✅ Implementálva
 
 ---
@@ -53,23 +53,66 @@ Az M03 modul kezeli a CoreS3 beépített **2" IPS kijelzőjét** (320×240 px). 
 
 ## 3. Képernyő módok
 
+Navigáció: rövid érintés (bármely ponton, nem SETUP módban) → következő mód körkörösen.
+
 ```
-MODE_MAIN (0) — alapértelmezett:
-  Stopper | BEST | ELOZO + max sebesség | DELTA | PRED | Session MAX
-
-MODE_SETUP (1) — rajtvonal felvétel:
-  [BAL] GPS 20m — 2 mp hosszú érintés → zöld villanás + azonnali stopper start
-  [JOBB] Fájlból (track.json) — rövid érintés
-  Aktuális GPS koordináták (lat/lon/sat)
-
-MODE_STATS (2) — session statisztika:
-  BEST LAP | KÖRÖK SZÁMA | MAX SEBESSÉG | GPS státusz
-
-MODE_DIAG (3) — diagnosztika:
-  LAT, LON, SPD, SAT, FIX, WiFi állapot
-
-Mód váltás: rövid érintés a képernyőn (bármely ponton, nem SETUP módban)
+MAIN (0) → LEAN (4) → KAMM (6) → SLIP (7) → CALIB (5) → STATS (2) → DIAG (3) → SETUP (1) → MAIN
 ```
+
+### MODE_MAIN (0) — köridőmérés
+
+Stopper | BEST | előző kör + max sebesség | DELTA | prediktív körido | Session MAX.
+Részletes layout: lásd §2.
+
+### MODE_LEAN / MODE_IMU (4) — dőlésszög műhorizont
+
+Kör alakú műhorizont (r=88px, 320×240 közepén):
+- Scan-line kitöltés: ég (kék) / talaj (barna) az aktuális dőlésszög alapján
+- Fehér körkerület + fokjelzők (±15°, ±30°, ±45°, ±60°)
+- Narancssárga peak-hold nyilak a körön kívül (bal/jobb maximum dőlés)
+- Fejléc: dőlésszög | GPS sebesség km/h | lateral G
+- Alul: BAL MAX és JOBB MAX peak értékek fokokban
+
+### MODE_KAMM (6) — Kamm kör dinamikus
+
+Lat G (vízszintes) vs Lon G (függőleges) trail grafikon:
+- Mozgó trail: fehér (legújabb) → narancs → sötét → szürke (20 minta)
+- **Piros kör** = első kerék tapadási határ (fékezésnél nő — súlyáthelyezés előre)
+- **Cián kör** = hátsó kerék tapadási határ (gyorsításnál nő — súlyáthelyezés hátra)
+- Dinamikus sugár: `ΔW = lon_g × h/L`, ratio_első = (wf − ΔW)/wf
+- Alul: LAT G | LON G | F% | R% (kerékenként Kamm kihasználtság)
+- Paraméterek (config.py): KAMM_WHEELBASE_M, KAMM_CG_HEIGHT_M, KAMM_WEIGHT_FRONT, KAMM_MU
+
+### MODE_SLIP (7) — yaw rate discrepancy (csúszásmonitor)
+
+Összehasonlítja a mért yaw rate-et (IMU gz) az elvárt yaw rate-tel (lat_g/v):
+- `delta = gz_mért − lat_g × g / v`
+- **delta < 0** → első gumi csúszik (motor tart kifelé, kevesebb yaw mint várt)
+- **delta > 0** → hátsó gumi csúszik (farok kiszáll, több yaw mint várt)
+- Gauge sáv: zöld (±0.05 r/s) → sárga (±0.10) → piros (>±0.10)
+- Alul: ω várható | ω mért | lat G | lean szög
+- Csak >10 km/h felett érvényes (osztás nullával elkerülése)
+- **Megjegyzés:** gz tengely valódi hardveren ellenőrizendő (yaw ≠ pitch/roll?)
+
+### MODE_CALIB (5) — IMU kalibráció
+
+Aktuális dőlésszög és lateral G megjelenítése.
+Hosszú érintés → 20 mintás újrakalibrálás (accel referencia + gyro bias).
+„OK – egyenes" jelzés ha |szög| < 3°.
+
+### MODE_STATS (2) — session statisztika
+
+BEST LAP | KÖRÖK SZÁMA | MAX SEBESSÉG
+
+### MODE_DIAG (3) — diagnosztika
+
+LAT, LON, SPD, CRS, SAT, FIX, WiFi állapot — valós idejű GPS adatok.
+
+### MODE_SETUP (1) — rajtvonal felvétel
+
+[BAL] GPS 20m — 2 mp hosszú érintés → zöld villanás + stopper indul
+[JOBB] Fájlból (track.json) — rövid érintés
+Aktuális GPS koordináták (lat/lon/sat).
 
 ---
 

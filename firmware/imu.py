@@ -181,10 +181,13 @@ class LeanSensor:
         self._peak_right    = 0.0
         self._peak_left     = 0.0
         self._last_ts       = None
-        self._ref_al        = 0.0   # laterális accel referencia (lean tengely)
+        self._ref_al        = 0.0   # laterális accel referencia (lean tengely = ay)
         self._ref_az        = 1.0   # vertikális accel referencia
+        self._ref_alon      = 0.0   # longitudinális accel referencia (= ax)
         self._gyro_bias_l   = 0.0   # lean tengelyre eső gyro DC offset
         self._lean_sign     = 1.0   # +1.0 vagy -1.0, config.IMU_LEAN_INVERT alapján
+        self._lon_g         = 0.0   # aktuális hosszirányú G (+ = gyorsítás, - = fékezés)
+        self._yaw_rate      = 0.0   # yaw rate (gz, rad/s) — kanyar szögsebessége
         self._ready         = False
         self._driver        = None
 
@@ -234,13 +237,15 @@ class LeanSensor:
         sum_ax = sum_az = sum_gy = 0.0
         ok = 0
 
+        sum_alon = 0.0
         for _ in range(samples):
             ax, ay, az = self._driver.read_accel()
             gx, gy, gz = self._driver.read_gyro()
             if ax is not None and gx is not None:
-                sum_ax += ay   # lean tengely = ay
-                sum_az += az
-                sum_gy += gx   # lean gyro   = gx
+                sum_ax   += ay   # lean tengely = ay
+                sum_az   += az
+                sum_gy   += gx   # lean gyro   = gx
+                sum_alon += ax   # longitudinális tengely = ax
                 ok += 1
             time.sleep_ms(20)
 
@@ -248,9 +253,10 @@ class LeanSensor:
             print("IMU kalibráció: nem elég minta")
             return False
 
-        self._ref_al       = sum_ax / ok   # sum_ax most ay-t tartalmaz (ld. lentebb)
-        self._ref_az       = sum_az / ok
-        self._gyro_bias_l  = sum_gy / ok   # sum_gy most gx-et tartalmaz
+        self._ref_al       = sum_ax  / ok
+        self._ref_az       = sum_az  / ok
+        self._gyro_bias_l  = sum_gy  / ok
+        self._ref_alon     = sum_alon / ok
         self._angle        = 0.0
         self._last_ts      = None
         print("IMU kalibráció: ref_al={:.4f} ref_az={:.4f} gyro_bias_l={:.4f}".format(
@@ -260,21 +266,23 @@ class LeanSensor:
     def _do_calibrate(self):
         """Belső: 10 mintás gyors kalibráció bootkor (accel + gyro bias)."""
         samples = 10
-        sum_al = sum_az = sum_gl = 0.0
+        sum_al = sum_az = sum_gl = sum_alon = 0.0
         ok = 0
         for _ in range(samples):
             ax, ay, az = self._driver.read_accel()
             gx, gy, gz = self._driver.read_gyro()
             if ax is not None and gx is not None:
-                sum_al += ay   # lean tengely = ay
-                sum_az += az
-                sum_gl += gx   # lean gyro   = gx
+                sum_al   += ay   # lean tengely = ay
+                sum_az   += az
+                sum_gl   += gx   # lean gyro   = gx
+                sum_alon += ax   # longitudinális = ax
                 ok += 1
             time.sleep_ms(10)
         if ok > 0:
-            self._ref_al      = sum_al / ok
-            self._ref_az      = sum_az / ok if (sum_az / ok) != 0.0 else 1.0
-            self._gyro_bias_l = sum_gl / ok
+            self._ref_al      = sum_al   / ok
+            self._ref_az      = (sum_az  / ok) if (sum_az / ok) != 0.0 else 1.0
+            self._gyro_bias_l = sum_gl   / ok
+            self._ref_alon    = sum_alon / ok
 
     # ------------------------------------------------------------------
     # Mérés frissítése
@@ -322,6 +330,12 @@ class LeanSensor:
         # Complementary filter
         self._angle = _ALPHA * angle_gyro + (1.0 - _ALPHA) * angle_accel
 
+        # Longitudinális G (+ = gyorsítás, - = fékezés)
+        self._lon_g = ax - self._ref_alon
+
+        # Yaw rate (kanyar szögsebesség) — gz, rad/s
+        self._yaw_rate = gz
+
         # Peak hold (pozitív = bal dőlés, negatív = jobb dőlés)
         if self._angle > self._peak_left:
             self._peak_left = self._angle
@@ -348,12 +362,22 @@ class LeanSensor:
         return self._peak_left
 
     @property
+    def lon_g(self):
+        """Hosszirányú G-erő. + = gyorsítás, - = fékezés. (Ha fordítva van, negate config-ban.)"""
+        return self._lon_g
+
+    @property
     def lateral_g(self):
         """Oldalirányú G-erő (g). Kiegyensúlyozott kanyarban ≈ tan(lean_angle)."""
         try:
             return math.tan(math.radians(self._angle))
         except Exception:
             return 0.0
+
+    @property
+    def yaw_rate(self):
+        """Yaw rate (kanyar szögsebesség), rad/s. Pozitív = bal kanyar (CCW felülről)."""
+        return self._yaw_rate
 
     @property
     def is_ready(self):

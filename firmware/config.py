@@ -98,6 +98,16 @@ IMU_I2C_SCL     = 1      # Grove Port A SCL (CoreS3)
 IMU_LEAN_INVERT = False
 
 # ============================================================
+# KAMM KÖR DINAMIKUS MODELL
+# ============================================================
+# Súlyáthelyezés: ΔW = lon_g × KAMM_CG_HEIGHT_M / KAMM_WHEELBASE_M
+# Első kerék kör (piros) nő fékezésnél, hátsó (cián) gyorsításnál.
+KAMM_WHEELBASE_M  = 1.49   # tengelytáv (m) — Suzuki DR800 Big S
+KAMM_CG_HEIGHT_M  = 0.68   # súlypontmagasság (m) — DR800 + ~80 kg pilóta kombinált TK becslés
+KAMM_WEIGHT_FRONT = 0.46   # statikus súlyelosztás — első kerék aránya (0.0–1.0)
+KAMM_MU           = 1.05   # csúcs tapadási együttható — aszfalt, road/dual-sport gumi
+
+# ============================================================
 # KIJELZŐ
 # ============================================================
 DISPLAY_BRIGHTNESS = 80   # % (0–100)

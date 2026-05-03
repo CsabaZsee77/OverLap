@@ -40,7 +40,7 @@ Az L1–L4 az egyetlen forrása az implementációs specifikációnak.
 
 - **Firmware:** MicroPython on M5Stack CoreS3 (ESP32-S3, 240 MHz, 16MB flash)
 - **GPS:** M5Stack GPS Unit (AT6558 chip, UART, NMEA 0183, konfigurálható 10 Hz)
-- **IMU:** CoreS3 beépített BMI270 (6-tengelyes, I2C)
+- **IMU:** CoreS3 beépített BMI270 **vagy** külső MPU6886 (Grove Port A, I2C SDA=2/SCL=1) — config.IMU_BACKEND = 'bmi270' | 'mpu6886'
 - **Kijelző:** CoreS3 beépített 2" IPS 320×240
 - **Backend:** Python / FastAPI
 - **Frontend:** döntés folyamatban (React + Vite vagy Plotly Dash)
