@@ -13,6 +13,7 @@ import M5
 from M5 import *
 import uasyncio as asyncio
 import time
+import math
 import random
 import network
 
@@ -54,6 +55,67 @@ class FakeGPS:
     def begin(self):  pass
 
 
+class FakeLean:
+    """
+    Szimulált dőlésszög demo módhoz.
+    Több frekvenciájú szinuszok keveréke → organikus kanyarhatás.
+    Sebesség inverz arányos a dőléssel (kanyarban lassabb).
+    """
+    is_ready = True
+
+    def __init__(self):
+        self._angle      = 0.0
+        self._peak_right = 0.0
+        self._peak_left  = 0.0
+        self._lon_g      = 0.0
+        self._t_sim      = 0.0
+
+    def update_sim(self, vt_ms):
+        self._t_sim = vt_ms / 1000.0
+        t = self._t_sim
+        a = (math.sin(t * 0.22) * 32
+           + math.sin(t * 0.45) * 18
+           + math.sin(t * 0.75) *  8
+           + math.sin(t * 0.10) * 12)
+        self._angle = max(-55.0, min(55.0, a))
+        if self._angle > self._peak_left:
+            self._peak_left = self._angle
+        if -self._angle > self._peak_right:
+            self._peak_right = -self._angle
+
+        # Longitudinális G: fékező/gyorsító fázisok, kanyarban kisebb
+        lon = (math.sin(t * 0.28 + 1.6) * 0.65
+             + math.sin(t * 0.52 + 0.4) * 0.30)
+        corner = abs(self._angle) / 55.0          # 0=egyenes, 1=max kanyar
+        self._lon_g = max(-1.1, min(0.75, lon * (1.0 - 0.75 * corner)))
+
+    @property
+    def angle(self):      return self._angle
+    @property
+    def peak_right(self): return self._peak_right
+    @property
+    def peak_left(self):  return self._peak_left
+    @property
+    def lateral_g(self):
+        return math.tan(math.radians(self._angle))
+    @property
+    def lon_g(self):      return self._lon_g
+
+    @property
+    def yaw_rate(self):
+        """Szimulált yaw rate: ideális kanyar + lon_g arányos perturbáció (slip demo)."""
+        v = max(15.0, 150.0 - abs(self._angle) * 1.6) / 3.6
+        omega_ideal = math.tan(math.radians(self._angle)) * 9.81 / v
+        corner_factor = min(1.0, abs(self._angle) / 30.0)
+        # Gyorsításnál hátsó slip (delta > 0), fékezésnél első slip (delta < 0)
+        perturbation = self._lon_g * 0.18 * corner_factor
+        return omega_ideal + perturbation
+
+    def reset_peaks(self):
+        self._peak_right = 0.0
+        self._peak_left  = 0.0
+
+
 class FakeLapDet:
     def __init__(self):
         self._best  = None
@@ -70,9 +132,10 @@ class FakeLapDet:
 # ============================================================
 # GLOBÁLIS ÁLLAPOT
 # ============================================================
-gps     = FakeGPS()
-lap_det = FakeLapDet()
-disp    = MotoDisplay(M5.Lcd)
+gps      = FakeGPS()
+lap_det  = FakeLapDet()
+fake_lean = FakeLean()
+disp     = MotoDisplay(M5.Lcd)
 
 lap_history       = []
 wifi_connected    = False
@@ -261,13 +324,21 @@ disp._force_redraw = True
 # ============================================================
 
 async def demo_task():
-    """Körido szimuláció — 100ms-onként ellenőriz."""
+    """Körido szimuláció + lean/sebesség animáció — 40ms-onként."""
     while True:
+        vt = _vt()
+
+        # Lean szimuláció folyamatosan fut (demo módban is)
+        fake_lean.update_sim(vt)
+        # Sebesség: egyenesen ~150 km/h, 45° dőlésnél ~80 km/h
+        gps.speed_kmh = max(55.0, 150.0 - abs(fake_lean.angle) * 1.6)
+
         if session_active and _lap_end_v is not None:
-            if _vt() >= _lap_end_v:
+            if vt >= _lap_end_v:
                 _finish_lap()
                 _start_lap()
-        await asyncio.sleep_ms(100)
+
+        await asyncio.sleep_ms(40)
 
 
 async def display_task():
@@ -296,6 +367,7 @@ async def display_task():
             battery_pct    = battery_pct,
             lap_start_ts   = lap_start_ts,
             lap_history    = lap_history,
+            lean           = fake_lean,
         )
         await asyncio.sleep_ms(200)
 
