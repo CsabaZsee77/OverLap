@@ -128,6 +128,7 @@ def _github_raw_to_file(repo, branch, path, token, dest_path):
     s = None
     try:
         s = socket.socket()
+        s.settimeout(20)
         s.connect(socket.getaddrinfo(host, 443)[0][-1])
         s = ssl.wrap_socket(s, server_hostname=host)
         s.write(req.encode())
@@ -167,7 +168,10 @@ def _github_raw_to_file(repo, branch, path, token, dest_path):
 
 
 def _https_get(host, path, headers):
-    """Egyszerű HTTPS GET, visszaad (status_code, body_bytes)."""
+    """
+    HTTPS GET, visszaad (status_code, body_bytes).
+    Max 16 KB body — elegendő a GitHub dir API válaszhoz.
+    """
     import socket
     import ssl
 
@@ -179,26 +183,36 @@ def _https_get(host, path, headers):
     s = None
     try:
         s = socket.socket()
+        s.settimeout(20)
         s.connect(socket.getaddrinfo(host, 443)[0][-1])
         s = ssl.wrap_socket(s, server_hostname=host)
         s.write(req.encode())
 
-        resp = bytearray()
+        # Fejléc beolvasása soronként (nem tárolja az egészet)
+        status = None
         while True:
+            line = s.readline()
+            if not line or line == b'\r\n':
+                break
+            decoded = line.decode(errors='ignore').strip()
+            if decoded.startswith('HTTP/'):
+                try:
+                    status = int(decoded.split(' ')[1])
+                except Exception:
+                    pass
+
+        if status is None:
+            return None, None
+
+        # Body beolvasása max 16 KB-ig
+        body = bytearray()
+        while len(body) < 16384:
             chunk = s.read(1024)
             if not chunk:
                 break
-            resp.extend(chunk)
+            body.extend(chunk)
 
-        resp_bytes = bytes(resp)
-        sep = resp_bytes.find(b'\r\n\r\n')
-        if sep < 0:
-            return None, None
-
-        header_raw = resp_bytes[:sep].decode(errors='ignore')
-        status     = int(header_raw.split('\r\n')[0].split(' ')[1])
-        body       = resp_bytes[sep + 4:]
-        return status, body
+        return status, bytes(body)
 
     except Exception as e:
         print('OTA HTTPS hiba:', e)
