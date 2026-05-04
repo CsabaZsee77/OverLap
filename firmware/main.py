@@ -215,7 +215,7 @@ def set_finish_line_from_gps():
         center_lat = gps.lat,
         center_lon = gps.lon,
         course_deg = gps.course,
-        width_m    = 20.0
+        width_m    = 30.0
     )
     if track_cfg:
         tc.sectors = track_cfg.sectors
