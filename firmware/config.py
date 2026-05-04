@@ -94,3 +94,21 @@ DISPLAY_BRIGHTNESS = 80   # % (0–100)
 # PÁLYA NÉV (megjelenítéshez, feltöltéshez)
 # ============================================================
 TRACK_NAME = 'Kakucs Ring'
+
+# ============================================================
+# OTA FRISSÍTÉS
+# ============================================================
+# token: GitHub Personal Access Token, csak "Contents: Read" jog kell
+# subdir: a repo-n belüli mappa (pl. 'firmware')
+# target: a device-on hova kerüljenek a fájlok
+# skip: ezeket OTA sosem írja felül
+OTA_REPOS = [
+    {
+        'repo':   'CsabaZsee77/OverLap',
+        'branch': 'main',
+        'token':  '',  # GitHub Personal Access Token — csak a device-on töltsd ki, ne commitold!
+        'subdir': 'firmware',
+        'target': '/flash/overlap/',
+        'skip':   ['config.py', 'ota.py', 'boot.py', 'track.json'],
+    },
+]
