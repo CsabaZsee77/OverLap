@@ -329,6 +329,25 @@ async def gps_task():
             # ── Köridő update ────────────────────────────────
             lap_result = lap_det.update(lat, lon, ts, speed)
 
+            # ── IMU adatok hozzáfűzése az utolsó trace ponthoz ──
+            # A lap_det.update() tuple-t append-el; itt dict-re cseréljük
+            # hogy a lean/Kamm adatok is bekerüljenek a visszajátszható logba.
+            if lap_det.current_trace and lean.is_ready:
+                lp = lap_det.current_trace[-1]
+                lat_g = lean.lateral_g
+                lon_g = lean.lon_g
+                lap_det.current_trace[-1] = {
+                    'lat':        lp[0],
+                    'lon':        lp[1],
+                    'speed_kmh':  round(lp[2], 1),
+                    'ts_ms':      lp[3],
+                    'lean_deg':   round(lean.angle, 1),
+                    'lat_g':      round(lat_g, 3),
+                    'lon_g':      round(lon_g, 3),
+                    'kamm_angle': round(
+                        math.degrees(math.atan2(lat_g, lon_g)) % 360, 1),
+                }
+
             if lap_result is not None:
                 prev_lap_ms = lap_result.lap_time_ms
                 _on_lap_complete(lap_result, ts)
