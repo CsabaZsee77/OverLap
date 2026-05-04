@@ -2,10 +2,10 @@
 
 **Modul:** M01
 **Szint:** L3 – Állapotgép és Engine
-**Verzió:** v0.1.0
+**Verzió:** v1.2.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-04-22
-**Státusz:** 🔲 Tervezve
+**Utolsó módosítás:** 2026-05-04
+**Státusz:** ✅ Implementálva
 
 ---
 
@@ -63,23 +63,36 @@ Belső adatok:
 
 ---
 
-## 3. IMUSensor állapotgép
+## 3. LeanSensor állapotgép (imu.py)
 
 ```
+Két backend (config.IMU_BACKEND):
+  'bmi270'  → beépített CoreS3 BMI270 (M5Unified API)
+  'mpu6886' → külső MPU6886 I2C (Grove Port A)
+
 States:
-  INIT   → I2C nyitva, BMI270 regiszterek konfigurálva
-  READY  → Folyamatos olvasás lehetséges
-  ERROR  → I2C hiba (visszapróbálkozás 5 s-onként)
+  (init)   → begin() hívás előtt, _ready = False
+  READY    → begin() sikeres, update() hívható
+  (error)  → begin() sikertelen, _ready = False, update() no-op
 
 Metódusok:
-  IMUSensor.__init__(i2c_id=0, addr=0x68)
-  IMUSensor.begin()        → I2C init, regiszter konfig
-  IMUSensor.update()       → ax, ay, az, gx, gy, gz olvasás
-  IMUSensor.get_accel()    → (ax, ay, az) m/s²
-  IMUSensor.get_gyro()     → (gx, gy, gz) °/s
-  IMUSensor.get_lean()     → lean angle (°), giroszkóp integrálból
+  LeanSensor.begin()          → backend init + alap kalibráció (10 minta)
+  LeanSensor.calibrate()      → 20 mintás újrakalibrálás (accel ref + gyro bias)
+  LeanSensor.update()         → complementary filter léptetése (25 Hz-en hívandó)
+  LeanSensor.reset_peaks()    → peak hold nullázása
 
-Megjegyzés: CoreS3 beépített BMI270 — nem külső modul, I2C0
+Publikus property-k:
+  .angle       → aktuális dőlésszög fokban (+ = bal, - = jobb)
+  .peak_right  → session max jobb dőlés (fok, pozitív)
+  .peak_left   → session max bal dőlés (fok, pozitív)
+  .lateral_g   → oldalirányú G-erő: tan(radians(angle))
+  .lon_g       → hosszirányú G-erő (+ = gyorsítás, - = fékezés)
+  .yaw_rate    → kanyar szögsebesség (gz, rad/s)
+  .is_ready    → bool
+
+Complementary filter:
+  α = 0.98
+  angle = α*(angle + sign*gyro*dt) + (1-α)*accel_angle
 ```
 
 ---
@@ -104,41 +117,51 @@ Sebesség szűréshez (opcionális):
 
 ---
 
-## 5. LapDetector állapotgép
+## 5. LapDetector állapotgép (lap.py)
 
 ```
-States:
-  NO_FINISH_LINE   → rajtvonal nincs definiálva
-  WAITING_FIRST    → rajtvonal OK, első áthaladásra vár (outlap)
-  IN_LAP           → kör folyamatban (első áthaladás megtörtént)
+Állapotok (STATE_* konstansok):
+  STATE_NO_LINE   → rajtvonal nincs definiálva
+  STATE_WAITING   → rajtvonal OK, első áthaladásra vár (outlap)
+  STATE_IN_LAP    → kör folyamatban (első áthaladás megtörtént)
 
 Átmenetek:
-  NO_FINISH_LINE → WAITING_FIRST: finish line betöltve/felvéve
-  WAITING_FIRST  → IN_LAP:        első rajtvonal áthaladás
-  IN_LAP         → IN_LAP:        minden újabb áthaladás = kör rögzítve
+  NO_LINE → WAITING: set_finish_line() hívva
+  WAITING → IN_LAP:  első rajtvonal-átlépés, DE csak ha
+                     ticks_diff(t_cross, _line_set_ms) >= MIN_OUTLAP_MS (5s)
+  IN_LAP  → IN_LAP:  minden újabb átlépés = kör rögzítve (ha MIN_LAP_MS < elapsed < MAX_LAP_MS)
+
+Konstansok:
+  MIN_LAP_MS    = 10 000 ms   (10 s)
+  MAX_LAP_MS    = 600 000 ms  (10 min)
+  MIN_OUTLAP_MS = 5 000 ms    (5 s — outlap guard)
 
 Metódusok:
-  LapDetector.__init__(finish_line_config)
-  LapDetector.set_finish_line(lat1, lon1, lat2, lon2)
-  LapDetector.update(lat, lon, timestamp_ms) → LapResult or None
-  LapDetector.get_best_lap()  → ms or None
-  LapDetector.get_lap_count() → int
+  LapDetector.set_finish_line(lat1, lon1, lat2, lon2)  → rögzíti _line_set_ms-t is
+  LapDetector.set_start_line(lat1, lon1, lat2, lon2)   → csak stage módban
+  LapDetector.update(lat, lon, ts_ms, speed_kmh) → LapResult | None
+  LapDetector.get_best_lap_ms()  → int | None
+  LapDetector.get_lap_count()    → int
+  LapDetector.get_state()        → str
   LapDetector.reset()
 
-LapResult (namedtuple):
+LapResult (osztály, __slots__):
   lap_time_ms    → int
   is_best        → bool
   delta_ms       → int (lap_time - best_lap, negatív = javulás)
   lap_number     → int
+  cross_ts_ms    → int (interpolált átlépési időbélyeg)
 
 Belső adatok:
-  self.finish_p1, self.finish_p2   → rajtvonal koordinátái
-  self.prev_lat, self.prev_lon     → előző GPS pont
-  self.prev_ts_ms                  → előző GPS pont időbélyege
-  self.t_last_cross_ms             → utolsó rajtvonal-átlépés időbélyege
-  self.best_lap_ms                 → legjobb köridő (None ha még nincs)
-  self.lap_count                   → kör számláló
-  self.state                       → aktuális állapot
+  _fl_lat1/lon1/lat2/lon2  → célvonal koordinátái
+  _sl_lat1/lon1/lat2/lon2  → startvonal koordinátái (stage)
+  _prev_lat, _prev_lon     → előző GPS pont (Kalman szűrt)
+  _prev_ts_ms              → előző GPS pont időbélyege
+  _last_cross_ms           → utolsó érvényes átlépés időbélyege
+  _line_set_ms             → vonal beállításának időbélyege (outlap guard)
+  _best_lap_ms             → legjobb köridő
+  _lap_count               → kör számláló
+  current_trace            → aktuális kör GPS+IMU trace (list of dict)
 ```
 
 ---

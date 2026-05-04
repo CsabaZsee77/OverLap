@@ -2,9 +2,9 @@
 
 **Modul:** M01
 **Szint:** L1 – Üzleti Folyamat
-**Verzió:** v0.2.0
+**Verzió:** v1.2.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-04-28
+**Utolsó módosítás:** 2026-05-04
 **Státusz:** ✅ Implementálva
 
 ---
@@ -104,12 +104,16 @@ Fő mérési loop (async, folyamatos):
 Köridő rögzítve:
   - lap_time = t_cross - t_prev_cross (ms)
   - lap_max_speed = kör alatt mért legnagyobb sebesség (km/h)
-  - GPS trace mentése a körből (logger.py)
+  - max_lean_right / max_lean_left = per-kör IMU csúcsdőlés (fok)
+  - peak_kamm_g = per-kör max kombinált G-erő (Kamm kör)
+  - peak_kamm_angle = irányvektor szöge a max Kamm pillanatában (fok)
+  - GPS trace mentése a körből (logger.py) — minden pont tartalmazza:
+      lat, lon, speed_kmh, ts_ms, lean_deg, lat_g, lon_g, kamm_angle
   - best_lap frissítés ha szükséges
-  - lap_max_speed_kmh nullázódik → következő kör mérése kezdődik
+  - Per-kör csúcsok (speed, lean, kamm) nullázódnak
   - M02 értesítése (szektor reset)
   - M03 értesítése (kijelző frissítés: stopper nulláz, ELOZO + max sebesség)
-  - M04 értesítése (uplink queue, Telegram: per-kör max sebesség)
+  - M04 értesítése (uplink queue, Telegram: lean + Kamm adatokkal)
 ```
 
 ---
@@ -121,10 +125,11 @@ Két módszer:
 
 A) Automatikus (GPS alapú) — SETUP képernyőn, bal oldal 2 mp nyomva tartás:
    - Felhasználó a rajtvonalnál áll (GPS FIX szükséges)
-   - 2 másodperces hosszú érintés → GPS koordináta rögzítve mint L1
-   - Mozgásirány alapján merőleges számítva → L2 pont (20 m széles vonal)
-   - Azonnali visszajelzés: 1 mp-es teljes zöld képernyő villanás
+   - 2 másodperces hosszú érintés → aktuális GPS pozíció + menetirány rögzítve
+   - Mozgásirányra merőleges vonal számítva → 30 m széles rajtvonal szegmens
+   - Azonnali visszajelzés: 2 mp-es teljes zöld képernyő villanás + hangjelzés
    - Stopper azonnal elindul a beállítás pillanatától
+   - Per-kör IMU csúcsértékek (lean, Kamm) nullázódnak
    - Csak memóriában tárolódik (track.json nem módosul)
 
 B) Fájlból (track.json) — SETUP képernyőn, jobb oldal érintés:
@@ -167,9 +172,15 @@ Algoritmus: 2D szegmens metszés (CCW teszt)
    ahol interpolation_factor = geometriai arány a metszési ponthoz
 
 4. Kördetektálás:
-   Ha már volt előző áthaladás ÉS eltelt > MIN_LAP_TIME (pl. 30 s):
+   Ha már volt előző áthaladás ÉS eltelt > MIN_LAP_TIME (10 s):
      lap_time = t - t_prev_crossing
      t_prev_crossing = t
+
+5. Outlap guard (MIN_OUTLAP_MS = 5 s):
+   Az első átlépés (STATE_WAITING → STATE_IN_LAP) csak akkor fogadható el,
+   ha a rajtvonal beállítása óta legalább 5 másodperc eltelt.
+   Ez megakadályozza, hogy GPS kiesés után késve detektált első átlépés
+   rövidebb első köridőt eredményezzen.
 ```
 
 ---
@@ -202,9 +213,10 @@ Zaj paraméterek:
 | Boot | GPS + IMU inicializálás, config betöltés |
 | GPS FIX megszerzése | Mérési loop indítása, kijelzőn FIX jelzés |
 | GPS FIX elvesztése (>5 s) | Kijelzőn figyelmeztetés, IMU-only mód |
-| "SET FINISH LINE" bal 2 mp | GPS koordináta rögzítése, zöld villanás, stopper indul |
-| Rajtvonal metszése (érvényes) | Köridő + per-kör max sebesség rögzítés, stopper nulláz |
-| Rajtvonal metszése (<30 s után) | Kihagyva (outlap, hibás detektálás) |
+| "SET FINISH LINE" bal 2 mp | 30m-es rajtvonal rögzítése, 2mp zöld villanás, stopper indul, IMU nullázás |
+| Rajtvonal metszése (outlap, 1.) | STATE_WAITING→IN_LAP, csak ha >5 s a beállítás óta |
+| Rajtvonal metszése (érvényes) | Köridő + lean/Kamm/sebesség rögzítés, stopper nulláz |
+| Rajtvonal metszése (<10 s után) | Kihagyva (MIN_LAP_MS guard) |
 | WiFi kapcsolat fel | M04 queue flush |
 | Gomb megnyomás | Kijelző mód váltás (M03) |
 

@@ -2,10 +2,10 @@
 
 **Modul:** M01
 **Szint:** L2 – Döntési Logika
-**Verzió:** v0.1.0
+**Verzió:** v1.2.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-04-22
-**Státusz:** 🔲 Tervezve
+**Utolsó módosítás:** 2026-05-04
+**Státusz:** ✅ Implementálva
 
 ---
 
@@ -39,22 +39,39 @@ Satellit szám (GGA, mező 7):
 Rajtvonal metszés detektálva → érvényes-e a kör?
 
 Feltételek:
-  A) MIN_LAP_TIME: eltelt idő > 30 000 ms (30 s) az előző metszés óta
+  A) MIN_LAP_MS: eltelt idő > 10 000 ms (10 s) az előző metszés óta
      → IGEN: normál kör elfogadva
      → NEM: kihagyva (outlap, visszafordulás, false positive)
 
-  B) MAX_LAP_TIME: eltelt idő < 600 000 ms (10 perc)
+  B) MAX_LAP_MS: eltelt idő < 600 000 ms (10 perc)
      → IGEN: normál kör
      → NEM: kihagyva (eszköz leállt, GPS kiesett, stb.)
 
-  C) GPS valid az egész körön át?
-     → Ha a kör során valid = False volt > 5 s:
-         → kör rögzítve, de megjelölve: "GPS dropout"
-         → backend figyelmeztetést jelenít meg az analitikában
-
 Végső döntés:
-  MIN_LAP_TIME < elapsed < MAX_LAP_TIME → köridő rögzítve
-  egyébként → eldobva, log-ban megjegyezve
+  MIN_LAP_MS < elapsed < MAX_LAP_MS → köridő rögzítve
+  egyébként → eldobva, print-ben jelezve
+```
+
+---
+
+## 2b. Outlap guard döntés (MIN_OUTLAP_MS)
+
+```
+Rajtvonal beállítása után az ELSŐ átlépés (STATE_WAITING → IN_LAP):
+
+  MIN_OUTLAP_MS = 5 000 ms (5 s)
+
+  Ha t_cross - t_line_set < MIN_OUTLAP_MS:
+    → ELUTASÍTVA (túl korai, GPS kiesés utáni késett detektálás)
+    → Állapot marad STATE_WAITING
+    → Print: "outlap átlépés túl korai"
+
+  Ha t_cross - t_line_set >= MIN_OUTLAP_MS:
+    → ELFOGADVA → STATE_IN_LAP, _last_cross_ms = t_cross
+
+Indoklás: ha a vonal beállításakor GPS kiesés van, a Kalman-szűrő
+lassan konvergál; az első detektált átlépés késhet, és félkör-hosszú
+"első kört" eredményezne. Az 5s guard ezt kizárja.
 ```
 
 ---
@@ -101,33 +118,31 @@ Ha GPS dropout (valid = False):
 ## 5. Rajtvonal metszés geometriai döntés
 
 ```
-Két szegmens: P1→P2 (GPS mozgás) és L1→L2 (rajtvonal)
+Két szegmens: P1→P2 (GPS mozgás) és L1→L2 (rajtvonal, 30 m széles)
 
-Döntés: metszik-e egymást?
+Döntés: metszik-e egymást? (_segments_intersect, CCW teszt)
 
-Segédfüggvény — direction(A, B, C):
-  cross = (C.lon - A.lon) * (B.lat - A.lat)
-        - (B.lon - A.lon) * (C.lat - A.lat)
-  return: pozitív / nulla / negatív (CCW / collinear / CW)
+Segédfüggvény — _direction(A, B, C):
+  return (C.lat - A.lat) * (B.lon - A.lon)
+       - (B.lat - A.lat) * (C.lon - A.lon)
 
-Metszés feltétele:
-  d1 = direction(L1, L2, P1)
-  d2 = direction(L1, L2, P2)
-  d3 = direction(P1, P2, L1)
-  d4 = direction(P1, P2, L2)
+Metszés feltétele (MINDKÉT feltétel kell):
+  d1 = _direction(L1, L2, P1)   ← P1 melyik oldalon van a vonaltól?
+  d2 = _direction(L1, L2, P2)   ← P2 melyik oldalon van a vonaltól?
+  d3 = _direction(P1, P2, L1)   ← L1 melyik oldalon van a mozgástól?
+  d4 = _direction(P1, P2, L2)   ← L2 melyik oldalon van a mozgástól?
 
-  IF (d1 * d2 < 0) AND (d3 * d4 < 0):
-    → METSZÉS VAN
+  IF (d1>0 AND d2<0 OR d1<0 AND d2>0)    ← ellentétes oldalak a vonaltól
+     AND
+     (d3>0 AND d4<0 OR d3<0 AND d4>0):   ← metszés a szegmensen BELÜL van
+    → METSZÉS VAN (véges 30m-es szegmens, nem végtelen egyenes)
+
+Fontos: a d3/d4 feltétel kizárja a vonal MEGHOSSZABBÍTÁSÁN való
+hamis keresztezést (pl. pályakanyarban 100m-re a vonaltól).
 
 Interpolált áthaladási idő:
-  t_gps_interval = t_P2 - t_P1  (GPS tick-ek között eltelt ms)
   ratio = |d1| / (|d1| + |d2|)
-  t_cross = t_P1 + ratio * t_gps_interval
-
-Iráyellenőrzés (outlap kizárás opcionális):
-  Ha a rajtvonalat "hátulról" szeli a vektor (pl. visszafordulás):
-    → döntés: csak az előre haladó irányt fogadjuk el
-    → cross product előjele alapján
+  t_cross = t_P1 + ratio * ticks_diff(t_P2, t_P1)
 ```
 
 ---

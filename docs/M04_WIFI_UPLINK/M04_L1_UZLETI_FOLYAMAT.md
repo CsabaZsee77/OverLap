@@ -2,9 +2,9 @@
 
 **Modul:** M04
 **Szint:** L1 – Üzleti Folyamat
-**Verzió:** v0.2.0
+**Verzió:** v1.2.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-04-28
+**Utolsó módosítás:** 2026-05-04
 **Státusz:** ✅ Implementálva
 
 ---
@@ -71,14 +71,20 @@ POST /api/v1/laps
 Content-Type: application/json
 
 {
-  "device_id": "motometer_abc123",
+  "device_id": "overlap_abc123",
   "session_id": "2026-04-22T14:30:00",
   "lap_number": 5,
   "lap_time_ms": 61234,
   "sector_times_ms": [9800, 11500, 10900, 9700, 10800, 8530],
   "timestamp_utc": "2026-04-22T14:52:11Z",
   "gps_trace": [
-    {"lat": 47.123456, "lon": 19.123456, "spd": 87.3, "ts": 1745330531000},
+    {
+      "lat": 47.123456, "lon": 19.123456,
+      "speed_kmh": 87.3, "ts_ms": 1745330531000,
+      "lean_deg": -34.2,
+      "lat_g": 0.612, "lon_g": -0.084,
+      "kamm_angle": 97.8
+    },
     ...
   ]
 }
@@ -89,36 +95,58 @@ Content-Type: application/json
 ## 5. Offline log (logger.py)
 
 ```
-Flash fájlrendszer: /flash/mm_logs/   (fallback: /sd/motometer_logs/)
+Fájlrendszer stratégia (prioritás sorrendben):
+  /sd/overlap_logs/   → elsődleges (SD kártya, ha elérhető)
+  /flash/mm_logs/     → fallback (belső flash, ~500 KB szabad)
 
 Fájlnév: session_<device_id>_<boot_ts_ms>.json
 Format: JSON (egy fájl = egy session)
+
+Session lezárása:
+  - A fájl SOSEM törlődik újraindításkor — megmarad a következő boothoz
+  - add_lap() minden körután azonnal ki is írja (áramkimaradás-biztos)
+  - close_session() utolsó flush-t csinál, de opcionális
+  - _uploaded = true → az uplink.py törli a fájlt feltöltés után
 
 JSON struktúra:
 {
   "device_id":  "mm_f412faba14ec",
   "track_id":   null,
   "rider_name": "",
-  "started_at": "2026-04-28T...",
+  "started_at": "2026-05-04T...",
   "laps": [
     {
-      "lap_number":      1,
-      "lap_time_ms":     57092,
-      "lap_start_ts":    421578,
-      "lap_end_ts":      478670,
-      "sector_times_ms": [],
-      "max_speed_kmh":   127.4,    ← per-kör maximum (v0.2+)
-      "gps_trace":       []
+      "lap_number":       1,
+      "lap_time_ms":      57092,
+      "lap_start_ts":     421578,
+      "lap_end_ts":       478670,
+      "sector_times_ms":  [],
+      "max_speed_kmh":    127.4,
+      "max_lean_right":   41.3,    ← per-kör max jobb dőlés (fok) (v1.2+)
+      "max_lean_left":    38.7,    ← per-kör max bal dőlés (fok) (v1.2+)
+      "peak_kamm_g":      0.923,   ← per-kör max kombinált G-erő (v1.2+)
+      "peak_kamm_angle":  97.8,    ← irányszög a max Kamm pillanatában (fok) (v1.2+)
+      "gps_trace": [
+        {
+          "lat": 47.123456, "lon": 19.123456,
+          "speed_kmh": 87.3, "ts_ms": 421578,
+          "lean_deg": -34.2,
+          "lat_g": 0.612, "lon_g": -0.084,
+          "kamm_angle": 97.8
+        },
+        ...
+      ]
     }
   ],
   "_uploaded": false
 }
 
 Tárhely becslés:
-  Egy kör (trace nélkül): ~200 byte
-  GPS trace: ~24 KB (600 pont × 40 byte)
+  Egy kör (trace nélkül): ~250 byte
+  GPS trace (IMU mezőkkel): ~40 KB (600 pont × 68 byte)
   CoreS3 flash szabad: ~500 KB
-  → tízezer kör (trace nélkül) / ~20 kör (trace-szel)
+  → kettőezer kör (trace nélkül) / ~12 kör (trace-szel flash-en)
+  → SD kártyán: korlátlan
 ```
 
 ## 5b. Telegram értesítések
@@ -126,13 +154,25 @@ Tárhely becslés:
 ```
 Telegram Bot API — minden kör után üzenet (ha WiFi elérhető):
 
-Mező         | Tartalom
--------------|------------------------------------------
-lap_number   | kör sorszáma (#1, #2, ...)
-lap_time_ms  | kör ideje (M:SS.mmm)
-max_speed_kmh| az adott KÖR maximuma (nem session max)
-is_best      | "LEGJOBB!" jelölés ha new best
-delta        | eltérés az előző körtől (+/- mp)
+Feladó neve: OverLAP (korábban: MotoMeter — v1.2-ben átnevezve)
+
+Mező             | Tartalom
+-----------------|------------------------------------------
+lap_number       | kör sorszáma (#1, #2, ...)
+lap_time_ms      | kör ideje (M:SS.mmm)
+max_speed_kmh    | az adott KÖR maximuma (nem session max)
+is_best          | "LEGJOBB!" jelölés ha new best
+delta            | eltérés az előző körtől (+/- mp)
+max_lean_right   | per-kör max jobb dőlés (fok) — "Max doles: Jobb X"
+max_lean_left    | per-kör max bal dőlés (fok)  — "Max doles: Bal Y"
+peak_kamm_g      | per-kör max Kamm G-erő        — "Max Kamm: X.XXG (szektor)"
+peak_kamm_angle  | Kamm irányszög → szektornév (Gyorsítás / Kanyar / Fékezés stb.)
+
+Példa üzenet:
+  OverLAP #3  1:02.47  🏁 LEGJOBB!
+  Max: 134 km/h  Delta: -0.88s
+  Max doles: Bal 39  Jobb 42
+  Max Kamm: 0.91G (Bal kanyar)
 
 Retry logika:
   - Sikertelen küldés: telegram_queue-ban marad
