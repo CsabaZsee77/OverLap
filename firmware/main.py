@@ -114,6 +114,12 @@ lap_peak_lean_left   = 0.0   # max bal dőlés fokban (pozitív)
 lap_peak_kamm_g      = 0.0   # max kombinált G (Kamm kör)
 lap_peak_kamm_angle  = 0.0   # irány fokban a max Kamm pillanatában
 
+# Session-szintű IMU csúcsok (session végéig nem nullázódnak)
+session_peak_lean_right = 0.0
+session_peak_lean_left  = 0.0
+session_peak_kamm_g     = 0.0
+session_peak_kamm_angle = 0.0
+
 # ============================================================
 # PÁLYA KONFIGURÁCIÓ
 # ============================================================
@@ -238,11 +244,17 @@ def set_finish_line_from_gps():
     track_cfg = tc
 
     # Per-kör és session csúcsok nullázása új session-nél
-    lap_max_speed_kmh   = 0.0
-    lap_peak_lean_right = 0.0
-    lap_peak_lean_left  = 0.0
-    lap_peak_kamm_g     = 0.0
-    lap_peak_kamm_angle = 0.0
+    global session_peak_lean_right, session_peak_lean_left
+    global session_peak_kamm_g, session_peak_kamm_angle
+    lap_max_speed_kmh      = 0.0
+    lap_peak_lean_right    = 0.0
+    lap_peak_lean_left     = 0.0
+    lap_peak_kamm_g        = 0.0
+    lap_peak_kamm_angle    = 0.0
+    session_peak_lean_right = 0.0
+    session_peak_lean_left  = 0.0
+    session_peak_kamm_g     = 0.0
+    session_peak_kamm_angle = 0.0
 
     # Stopper azonnal indul a beállítás pillanatától
     if lap_start_ts is None:
@@ -379,6 +391,8 @@ def _on_lap_complete(result, ts):
     """Köridő rögzítésekor — log + uplink + telegram sor."""
     global lap_start_ts, lap_max_speed_kmh, prev_lap_max_kmh, lap_history
     global lap_peak_lean_right, lap_peak_lean_left, lap_peak_kamm_g, lap_peak_kamm_angle
+    global session_peak_lean_right, session_peak_lean_left
+    global session_peak_kamm_g, session_peak_kamm_angle
 
     print("LAP #{}: {:.3f}s  {}  delta={:+.3f}s".format(
         result.lap_number,
@@ -411,6 +425,18 @@ def _on_lap_complete(result, ts):
     lap_peak_lean_left  = 0.0
     lap_peak_kamm_g     = 0.0
     lap_peak_kamm_angle = 0.0
+
+    # Session-szintű csúcsok frissítése (sosem nullázódnak körön belül)
+    if this_lean_right > session_peak_lean_right:
+        session_peak_lean_right = this_lean_right
+    if this_lean_left > session_peak_lean_left:
+        session_peak_lean_left = this_lean_left
+    if this_kamm_g > session_peak_kamm_g:
+        session_peak_kamm_g     = this_kamm_g
+        session_peak_kamm_angle = this_kamm_angle
+
+    # STATS képernyő frissítése, ha éppen azt nézi
+    disp._force_redraw = True
 
     # Kör hozzáadása a kijelző listához (max 10 kör)
     lap_history.append({
@@ -480,6 +506,31 @@ def _flush_telegram_queue():
             break
 
 
+def _send_session_to_telegram():
+    """Aktuális session JSON fájl elküldése Telegram-ra dokumentumként."""
+    if not telegram.is_enabled():
+        print("Telegram: nincs beallitva, kuldés kihagyva")
+        _beep(400, 300)
+        return
+    path = logger._session_path
+    if not path:
+        print("Telegram: nincs session fajl")
+        _beep(400, 300)
+        return
+    laps = lap_det.get_lap_count()
+    best = lap_det.get_best_lap_ms()
+    best_str = '{:.3f}s'.format(best / 1000.0) if best else '---'
+    caption = 'OverLAP session: {} kor, best {}'.format(laps, best_str)
+    print("Telegram: session fajl kuldese ({})".format(path))
+    ok = telegram.send_document(path, caption)
+    if ok:
+        _beep(1200, 150)
+        time.sleep_ms(160)
+        _beep(1600, 200)
+    else:
+        _beep(400, 500)
+
+
 def _try_immediate_uplink(result):
     """
     Az aktuális session eddigi adatait feltölti.
@@ -524,17 +575,20 @@ async def display_task():
             )
 
         disp.update(
-            gps               = gps,
-            lap_detector      = lap_det,
-            max_speed_kmh     = max_speed_kmh,
-            wifi_connected    = wifi_connected,
-            predicted_ms      = predicted_ms,
-            prev_lap_ms       = prev_lap_ms,
-            battery_pct       = battery_pct,
-            lap_start_ts      = lap_start_ts,
-            prev_lap_max_kmh  = prev_lap_max_kmh,
-            lap_history       = lap_history,
-            lean              = lean,
+            gps                  = gps,
+            lap_detector         = lap_det,
+            max_speed_kmh        = max_speed_kmh,
+            wifi_connected       = wifi_connected,
+            predicted_ms         = predicted_ms,
+            prev_lap_ms          = prev_lap_ms,
+            battery_pct          = battery_pct,
+            lap_start_ts         = lap_start_ts,
+            prev_lap_max_kmh     = prev_lap_max_kmh,
+            lap_history          = lap_history,
+            lean                 = lean,
+            session_lean_right   = session_peak_lean_right,
+            session_lean_left    = session_peak_lean_left,
+            session_kamm_g       = session_peak_kamm_g,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
 
@@ -640,6 +694,8 @@ async def touch_task():
                         lean.reset_peaks()
                         _beep(1000, 200)
                         disp._force_redraw = True
+                    elif disp._mode == MODE_STATS:   # STATS hosszú = session küldése Telegram-ra
+                        _send_session_to_telegram()
         else:
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)

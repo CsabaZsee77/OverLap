@@ -9,7 +9,9 @@ import json
 import math
 
 
-_API_BASE = 'https://api.telegram.org/bot{}/sendMessage'
+_API_BASE     = 'https://api.telegram.org/bot{}/sendMessage'
+_API_DOC_PATH = '/bot{}/sendDocument'
+_BOUNDARY     = b'----OvLpBnd01'
 
 _KAMM_SECTORS = [
     (22.5,  'gyorsítás'),
@@ -96,6 +98,77 @@ class TelegramNotifier:
         if not self._enabled:
             return False
         return self._send(text)
+
+    def send_document(self, filepath, caption=''):
+        """Session JSON fájl küldése Telegram-ra dokumentumként (multipart)."""
+        if not self._enabled:
+            return False
+        try:
+            with open(filepath, 'rb') as f:
+                content = f.read()
+        except Exception as e:
+            print("Telegram: fajl olvasas hiba ->", e)
+            return False
+        filename = filepath.rsplit('/', 1)[-1]
+        print("Telegram: sendDocument {} ({} byte)".format(filename, len(content)))
+        return self._send_multipart(filename, content, caption)
+
+    def _send_multipart(self, filename, content, caption=''):
+        """Multipart/form-data küldés raw SSL socketen keresztül."""
+        bnd = _BOUNDARY
+
+        parts = []
+        parts.append(b'--' + bnd + b'\r\n')
+        parts.append(b'Content-Disposition: form-data; name="chat_id"\r\n\r\n')
+        parts.append(self._chat_id.encode() + b'\r\n')
+        if caption:
+            parts.append(b'--' + bnd + b'\r\n')
+            parts.append(b'Content-Disposition: form-data; name="caption"\r\n\r\n')
+            parts.append(caption.encode('utf-8') + b'\r\n')
+        parts.append(b'--' + bnd + b'\r\n')
+        parts.append(b'Content-Disposition: form-data; name="document"; filename="'
+                     + filename.encode() + b'"\r\n')
+        parts.append(b'Content-Type: application/json\r\n\r\n')
+        parts.append(content)
+        parts.append(b'\r\n')
+        parts.append(b'--' + bnd + b'--\r\n')
+
+        body_len = sum(len(p) for p in parts)
+        host = 'api.telegram.org'
+        path = _API_DOC_PATH.format(self._token)
+        header = (
+            'POST {} HTTP/1.0\r\n'
+            'Host: {}\r\n'
+            'Content-Type: multipart/form-data; boundary=----OvLpBnd01\r\n'
+            'Content-Length: {}\r\n'
+            'Connection: close\r\n\r\n'
+        ).format(path, host, body_len).encode()
+
+        try:
+            import socket, ssl
+            s = socket.socket()
+            s.settimeout(30)
+            s.connect(socket.getaddrinfo(host, 443)[0][-1])
+            s = ssl.wrap_socket(s, server_hostname=host)
+            s.write(header)
+            for part in parts:
+                s.write(part)
+            resp = b''
+            while True:
+                try:
+                    chunk = s.read(512)
+                    if not chunk:
+                        break
+                    resp += chunk
+                except Exception:
+                    break
+            s.close()
+            ok = b'200 OK' in resp or b'"ok":true' in resp
+            print("Telegram: sendDocument", "OK" if ok else "HIBA")
+            return ok
+        except Exception as e:
+            print("Telegram: sendDocument hiba ->", type(e).__name__, e)
+            return False
 
     def _send(self, text):
         url  = _API_BASE.format(self._token)
