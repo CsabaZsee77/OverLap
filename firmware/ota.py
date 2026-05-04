@@ -194,7 +194,10 @@ def _https_get(host, path, headers):
             line = s.readline()
             if not line or line == b'\r\n':
                 break
-            decoded = line.decode(errors='ignore').strip()
+            try:
+                decoded = line.decode().strip()
+            except Exception:
+                decoded = ''
             if decoded.startswith('HTTP/'):
                 try:
                     status = int(decoded.split(' ')[1])
