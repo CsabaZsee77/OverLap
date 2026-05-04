@@ -80,7 +80,7 @@ class MotoDisplay:
         lcd.drawString("OverLAP", 75, 85)
         lcd.setTextColor(GRAY, BLACK)
         lcd.setTextSize(1)
-        lcd.drawString("v0.1  Lap Timing Platform", 55, 130)
+        lcd.drawString("v1.1  Lap Timing Platform", 55, 130)
         time.sleep_ms(1500)
         self._force_redraw = True
 
