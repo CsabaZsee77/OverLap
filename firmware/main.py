@@ -73,7 +73,7 @@ from overlap.gps          import GPSSensor
 from overlap.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
 from overlap.sector       import SectorDetector
 from overlap.delta        import LapPredictor
-from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB
+from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB, MODE_STATS
 from overlap.track_loader import load_track, save_track, make_track_from_gps
 from overlap.logger       import SessionLogger
 from overlap.uplink       import Uplink
