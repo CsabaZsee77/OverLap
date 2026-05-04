@@ -243,13 +243,13 @@ class LapDetector:
     # ------------------------------------------------------------------
 
     def _crosses_finish(self, lat, lon):
-        return self._segments_intersect(
+        return self._sign_changed(
             self._prev_lat, self._prev_lon, lat, lon,
             self._fl_lat1, self._fl_lon1, self._fl_lat2, self._fl_lon2
         )
 
     def _crosses_start(self, lat, lon):
-        return self._segments_intersect(
+        return self._sign_changed(
             self._prev_lat, self._prev_lon, lat, lon,
             self._sl_lat1, self._sl_lon1, self._sl_lat2, self._sl_lon2
         )
@@ -331,8 +331,20 @@ class LapDetector:
         return (cx - ax) * (by - ay) - (bx - ax) * (cy - ay)
 
     @classmethod
+    def _sign_changed(cls, p1x, p1y, p2x, p2y, l1x, l1y, l2x, l2y):
+        """
+        Igaz ha P1 és P2 a vonal ellentétes oldalán vannak (előjelváltás).
+        Robusztusabb a szegmensmetszésnél GPS kiesés / jitter esetén:
+        csak azt ellenőrzi, hogy a merőleges távolság előjelet váltott-e,
+        nem vizsgálja, hogy a mozgás a szegmensen belül keresztezi-e a vonalat.
+        """
+        d1 = cls._direction(l1x, l1y, l2x, l2y, p1x, p1y)
+        d2 = cls._direction(l1x, l1y, l2x, l2y, p2x, p2y)
+        return (d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)
+
+    @classmethod
     def _segments_intersect(cls, p1x, p1y, p2x, p2y, l1x, l1y, l2x, l2y):
-        """Igaz ha a P1→P2 szegmens metszi az L1→L2 szegmenst."""
+        """Igaz ha a P1→P2 szegmens metszi az L1→L2 szegmenst (CCW teszt)."""
         d1 = cls._direction(l1x, l1y, l2x, l2y, p1x, p1y)
         d2 = cls._direction(l1x, l1y, l2x, l2y, p2x, p2y)
         d3 = cls._direction(p1x, p1y, p2x, p2y, l1x, l1y)
