@@ -1029,7 +1029,7 @@ class MotoDisplay:
 
             lcd.setTextSize(2)
             lcd.setTextColor(CYAN, BLACK)
-            lcd.drawString("IMU KALIBRÁCIÓ", 35, 22)
+            lcd.drawString("IMU KALIBRACIO", 35, 22)
 
             lcd.setTextSize(1)
             lcd.setTextColor(GRAY, BLACK)
