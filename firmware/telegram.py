@@ -1,14 +1,36 @@
 # telegram.py - Telegram Bot értesítések köridő eredményekhez
-# MotoMeter v0.1 - M5Stack CoreS3
+# OverLAP v1.2 - M5Stack CoreS3
 #
 # Beállítás (config.py):
 #   TELEGRAM_BOT_TOKEN = '7123...:AAF...'   (@BotFather adja)
 #   TELEGRAM_CHAT_ID   = '123456789'        (@userinfobot adja)
 
 import json
+import math
 
 
 _API_BASE = 'https://api.telegram.org/bot{}/sendMessage'
+
+_KAMM_SECTORS = [
+    (22.5,  'gyorsítás'),
+    (67.5,  'gyorsítás + bal kanyar'),
+    (112.5, 'bal kanyar'),
+    (157.5, 'fékezés + bal kanyar'),
+    (202.5, 'fékezés'),
+    (247.5, 'fékezés + jobb kanyar'),
+    (292.5, 'jobb kanyar'),
+    (337.5, 'gyorsítás + jobb kanyar'),
+]
+
+
+def _kamm_sector(angle_deg):
+    """Kamm kör szektora az irányvektor szöge alapján.
+    0° = gyorsítás, 90° = bal kanyar, 180° = fékezés, 270° = jobb kanyar."""
+    a = angle_deg % 360
+    for limit, name in _KAMM_SECTORS:
+        if a < limit:
+            return name
+    return 'gyorsítás'
 
 
 class TelegramNotifier:
@@ -23,17 +45,19 @@ class TelegramNotifier:
 
     def send_lap(self, lap_number, lap_time_ms, delta_ms=None,
                  is_best=False, max_speed_kmh=0.0, sector_times_ms=None,
-                 track_name='', prev_lap_ms=None):
+                 track_name='', prev_lap_ms=None,
+                 max_lean_right=0.0, max_lean_left=0.0,
+                 peak_kamm_g=0.0, peak_kamm_angle=0.0):
         """Köridő értesítés küldése."""
         if not self._enabled:
             return False
 
-        mins  = lap_time_ms // 60000
-        secs  = (lap_time_ms % 60000) / 1000.0
+        mins     = lap_time_ms // 60000
+        secs     = (lap_time_ms % 60000) / 1000.0
         time_str = '{:d}:{:06.3f}'.format(mins, secs)
 
         lines = []
-        lines.append('MotoMeter - {}'.format(track_name) if track_name else 'MotoMeter')
+        lines.append('OverLAP - {}'.format(track_name) if track_name else 'OverLAP')
         lines.append('')
         lines.append('Kor #{}: {}{}'.format(
             lap_number, time_str, '  LEGJOBB!' if is_best else ''))
@@ -43,8 +67,18 @@ class TelegramNotifier:
             lines.append('Delta: {}{:.3f}s (vs legjobb)'.format(
                 sign, delta_ms / 1000.0))
 
+        lines.append('')
+
         if max_speed_kmh:
             lines.append('Max sebesseg: {:.0f} km/h'.format(max_speed_kmh))
+
+        if max_lean_right or max_lean_left:
+            lines.append('Max doles: Bal {:.0f}  Jobb {:.0f}'.format(
+                max_lean_left, max_lean_right))
+
+        if peak_kamm_g > 0.05:
+            sector = _kamm_sector(peak_kamm_angle)
+            lines.append('Max Kamm: {:.2f}G ({})'.format(peak_kamm_g, sector))
 
         if sector_times_ms:
             lines.append('')
@@ -64,10 +98,9 @@ class TelegramNotifier:
         return self._send(text)
 
     def _send(self, text):
-        url = _API_BASE.format(self._token)
+        url  = _API_BASE.format(self._token)
         body = json.dumps({'chat_id': self._chat_id, 'text': text})
 
-        # Próbáljuk urequests-szel (HTTPS)
         try:
             import requests
             resp = requests.post(
@@ -84,7 +117,6 @@ class TelegramNotifier:
         except Exception as e:
             print("Telegram: requests hiba ->", type(e).__name__, e)
 
-        # Fallback: raw socket + ssl
         try:
             import socket, ssl
             host = 'api.telegram.org'
