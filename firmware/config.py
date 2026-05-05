@@ -71,9 +71,17 @@ WIFI_RETRY_INTERVAL_S = 30
 # ============================================================
 # BACKEND
 # ============================================================
-BACKEND_URL   = ''    # ha üres, backend uplink kimarad
+BACKEND_URL   = 'http://46.225.12.228:8080'   # OverLAP szerver
 DEVICE_ID     = ''    # auto-generált MAC alapján, ha üres
 RIDER_NAME    = ''    # pl. 'Kiss Péter' — megjelenik a ranglistán
+
+# ============================================================
+# AKTÍV PÁLYA (szerver szinkronizáció)
+# ============================================================
+# Boot-kor letölti a pálya konfigurációt a szerverről és felülírja
+# a /flash/track.json-t. None = csak lokális fájl használata.
+# Szerver pálya ID-k: 1=Kakucs Ring, 2=verhalom, 3=Kakucs Ring - pontos
+ACTIVE_TRACK_ID = None   # <-- állítsd be a kívánt pálya ID-ra
 
 # ============================================================
 # TELEGRAM BOT

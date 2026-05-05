@@ -75,6 +75,7 @@ from overlap.sector       import SectorDetector
 from overlap.delta        import LapPredictor
 from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB, MODE_STATS
 from overlap.track_loader import load_track, save_track, make_track_from_gps
+from overlap.track_sync   import sync as track_sync, wait_wifi as track_sync_wait
 from overlap.logger       import SessionLogger
 from overlap.uplink       import Uplink
 from overlap.telegram     import TelegramNotifier
@@ -121,33 +122,6 @@ session_peak_kamm_g     = 0.0
 session_peak_kamm_angle = 0.0
 
 # ============================================================
-# PÁLYA KONFIGURÁCIÓ
-# ============================================================
-track_cfg = load_track()
-
-if track_cfg and track_cfg.is_ready:
-    # Üzemmód
-    lap_det.set_mode(MODE_STAGE if track_cfg.is_stage else MODE_CIRCUIT)
-
-    # Célvonal
-    fl = track_cfg.finish_line
-    lap_det.set_finish_line(fl.lat1, fl.lon1, fl.lat2, fl.lon2)
-
-    # Startvonal (stage)
-    if track_cfg.is_stage and track_cfg.has_start_line:
-        sl = track_cfg.start_line
-        lap_det.set_start_line(sl.lat1, sl.lon1, sl.lat2, sl.lon2)
-
-    # Szektordetektor
-    sec_det.set_sectors(track_cfg.sectors)
-    predictor.set_sector_count(len(track_cfg.sectors))
-
-    print("Pálya betöltve: {} ({} szektor, {})".format(
-        track_cfg.name, track_cfg.sector_count, track_cfg.track_type))
-else:
-    print("Rajtvonal nincs — SETUP módban indul")
-
-# ============================================================
 # BOOT KÉPERNYŐ
 # ============================================================
 disp.begin()
@@ -185,6 +159,50 @@ def connect_wifi():
         wifi_connected = False
 
 connect_wifi()
+
+# ============================================================
+# PÁLYA SZINKRONIZÁCIÓ (szerver → /flash/track.json)
+# ============================================================
+if config.ACTIVE_TRACK_ID and config.BACKEND_URL:
+    try:
+        import network as _net
+        _wlan = _net.WLAN(_net.STA_IF)
+        if not _wlan.isconnected():
+            print("TrackSync: várakozás WiFi-re (max 10s)...")
+            track_sync_wait(_wlan, timeout_ms=10000)
+        if _wlan.isconnected():
+            track_sync(config.BACKEND_URL, config.ACTIVE_TRACK_ID)
+        else:
+            print("TrackSync: WiFi nem érhető el — lokális track.json marad")
+    except Exception as _e:
+        print("TrackSync: hiba —", _e)
+
+# ============================================================
+# PÁLYA KONFIGURÁCIÓ
+# ============================================================
+track_cfg = load_track()
+
+if track_cfg and track_cfg.is_ready:
+    # Üzemmód
+    lap_det.set_mode(MODE_STAGE if track_cfg.is_stage else MODE_CIRCUIT)
+
+    # Célvonal
+    fl = track_cfg.finish_line
+    lap_det.set_finish_line(fl.lat1, fl.lon1, fl.lat2, fl.lon2)
+
+    # Startvonal (stage)
+    if track_cfg.is_stage and track_cfg.has_start_line:
+        sl = track_cfg.start_line
+        lap_det.set_start_line(sl.lat1, sl.lon1, sl.lat2, sl.lon2)
+
+    # Szektordetektor
+    sec_det.set_sectors(track_cfg.sectors)
+    predictor.set_sector_count(len(track_cfg.sectors))
+
+    print("Pálya betöltve: {} ({} szektor, {})".format(
+        track_cfg.name, track_cfg.sector_count, track_cfg.track_type))
+else:
+    print("Rajtvonal nincs — SETUP módban indul")
 
 # ============================================================
 # SESSION INDÍTÁS
