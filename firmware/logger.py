@@ -89,7 +89,9 @@ class SessionLogger:
     def add_lap(self, lap_number, lap_time_ms,
                 lap_start_ts=None, lap_end_ts=None,
                 sector_times_ms=None, gps_trace=None,
-                max_speed_kmh=None):
+                max_speed_kmh=None,
+                max_lean_right=None, max_lean_left=None,
+                peak_kamm_g=None, peak_kamm_angle=None):
         """
         Kör hozzáadása és azonnali flush a fájlba.
         gps_trace: list of (lat, lon, speed_kmh, ts_ms) tuple-ök
@@ -113,13 +115,17 @@ class SessionLogger:
                     })
 
         lap = {
-            'lap_number':      lap_number,
-            'lap_time_ms':     lap_time_ms,
-            'lap_start_ts':    lap_start_ts,
-            'lap_end_ts':      lap_end_ts,
-            'sector_times_ms': sector_times_ms or [],
-            'gps_trace':       trace_dicts,
-            'max_speed_kmh':   round(max_speed_kmh, 1) if max_speed_kmh else None,
+            'lap_number':       lap_number,
+            'lap_time_ms':      lap_time_ms,
+            'lap_start_ts':     lap_start_ts,
+            'lap_end_ts':       lap_end_ts,
+            'sector_times_ms':  sector_times_ms or [],
+            'gps_trace':        trace_dicts,
+            'max_speed_kmh':    round(max_speed_kmh, 1) if max_speed_kmh else None,
+            'max_lean_right':   round(max_lean_right, 1) if max_lean_right else None,
+            'max_lean_left':    round(max_lean_left, 1) if max_lean_left else None,
+            'peak_kamm_g':      round(peak_kamm_g, 3) if peak_kamm_g else None,
+            'peak_kamm_angle':  round(peak_kamm_angle, 1) if peak_kamm_angle else None,
         }
         self._session_data['laps'].append(lap)
         self._flush()

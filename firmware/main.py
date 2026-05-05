@@ -19,6 +19,7 @@ import uasyncio as asyncio
 import time
 import os
 import network
+import math
 
 print("=" * 40)
 print("MOTOMETER v0.1 - Starting...")
@@ -72,7 +73,7 @@ from overlap.gps          import GPSSensor
 from overlap.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
 from overlap.sector       import SectorDetector
 from overlap.delta        import LapPredictor
-from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB
+from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB, MODE_STATS
 from overlap.track_loader import load_track, save_track, make_track_from_gps
 from overlap.logger       import SessionLogger
 from overlap.uplink       import Uplink
@@ -106,6 +107,18 @@ lap_start_ts      = None
 lap_history       = []   # befejezett körök listája (kijelző görgetéshez)
 telegram_queue    = []   # el nem küldött körök puffere
 telegram_sent     = set()  # már elküldött kör számai (deduplikáció)
+
+# Per-kör IMU csúcsértékek (körönként nullázódnak)
+lap_peak_lean_right  = 0.0   # max jobb dőlés fokban (pozitív)
+lap_peak_lean_left   = 0.0   # max bal dőlés fokban (pozitív)
+lap_peak_kamm_g      = 0.0   # max kombinált G (Kamm kör)
+lap_peak_kamm_angle  = 0.0   # irány fokban a max Kamm pillanatában
+
+# Session-szintű IMU csúcsok (session végéig nem nullázódnak)
+session_peak_lean_right = 0.0
+session_peak_lean_left  = 0.0
+session_peak_kamm_g     = 0.0
+session_peak_kamm_angle = 0.0
 
 # ============================================================
 # PÁLYA KONFIGURÁCIÓ
@@ -204,6 +217,8 @@ def _beep(freq=1000, duration=200):
 
 def set_finish_line_from_gps():
     global track_cfg, lap_start_ts
+    global lap_peak_lean_right, lap_peak_lean_left, lap_peak_kamm_g, lap_peak_kamm_angle
+    global lap_max_speed_kmh, max_speed_kmh
     if not gps.is_valid():
         print("SET FINISH LINE: nincs GPS FIX!")
         _beep(400, 500)
@@ -215,7 +230,7 @@ def set_finish_line_from_gps():
         center_lat = gps.lat,
         center_lon = gps.lon,
         course_deg = gps.course,
-        width_m    = 20.0
+        width_m    = 30.0
     )
     if track_cfg:
         tc.sectors = track_cfg.sectors
@@ -228,14 +243,27 @@ def set_finish_line_from_gps():
     predictor.set_sector_count(len(tc.sectors))
     track_cfg = tc
 
-    # Stopper azonnal indul a beallitas pillanatatol
+    # Per-kör és session csúcsok nullázása új session-nél
+    global session_peak_lean_right, session_peak_lean_left
+    global session_peak_kamm_g, session_peak_kamm_angle
+    lap_max_speed_kmh      = 0.0
+    lap_peak_lean_right    = 0.0
+    lap_peak_lean_left     = 0.0
+    lap_peak_kamm_g        = 0.0
+    lap_peak_kamm_angle    = 0.0
+    session_peak_lean_right = 0.0
+    session_peak_lean_left  = 0.0
+    session_peak_kamm_g     = 0.0
+    session_peak_kamm_angle = 0.0
+
+    # Stopper azonnal indul a beállítás pillanatától
     if lap_start_ts is None:
         ts_now = time.ticks_ms()
         lap_start_ts = ts_now
         sec_det.start_lap(ts_now)
         _start_session()
 
-    print("SET FINISH LINE GPS: OK (20m, csak memoria)")
+    print("SET FINISH LINE GPS: OK (30m, csak memoria)")
 
     # Vizualis visszajelzes: teljes kepernyo 1mp-ig zold
     _beep(1200, 150)
@@ -271,9 +299,22 @@ def set_finish_line_from_file():
 # ============================================================
 
 async def imu_task():
-    """IMU dőlésszög mérés — 25 Hz"""
+    """IMU dőlésszög mérés + per-kör csúcskövetés — 25 Hz"""
+    global lap_peak_lean_right, lap_peak_lean_left, lap_peak_kamm_g, lap_peak_kamm_angle
     while True:
         lean.update()
+        if lean.is_ready:
+            angle = lean.angle
+            if angle < 0 and -angle > lap_peak_lean_right:
+                lap_peak_lean_right = -angle
+            elif angle > 0 and angle > lap_peak_lean_left:
+                lap_peak_lean_left = angle
+            lat_g = lean.lateral_g
+            lon_g = lean.lon_g
+            total_g = math.sqrt(lat_g * lat_g + lon_g * lon_g)
+            if total_g > lap_peak_kamm_g:
+                lap_peak_kamm_g    = total_g
+                lap_peak_kamm_angle = math.degrees(math.atan2(lat_g, lon_g)) % 360
         await asyncio.sleep_ms(40)    # 25 Hz
 
 
@@ -306,6 +347,25 @@ async def gps_task():
                 lon_g      = getattr(lean, 'lon_g', None) if lean_ok else None,
             )
 
+            # ── IMU adatok hozzáfűzése az utolsó trace ponthoz ──
+            # A lap_det.update() tuple-t append-el; itt dict-re cseréljük
+            # hogy a lean/Kamm adatok is bekerüljenek a visszajátszható logba.
+            if lap_det.current_trace and lean.is_ready:
+                lp = lap_det.current_trace[-1]
+                lat_g = lean.lateral_g
+                lon_g = lean.lon_g
+                lap_det.current_trace[-1] = {
+                    'lat':        lp[0],
+                    'lon':        lp[1],
+                    'speed_kmh':  round(lp[2], 1),
+                    'ts_ms':      lp[3],
+                    'lean_deg':   round(lean.angle, 1),
+                    'lat_g':      round(lat_g, 3),
+                    'lon_g':      round(lon_g, 3),
+                    'kamm_angle': round(
+                        math.degrees(math.atan2(lat_g, lon_g)) % 360, 1),
+                }
+
             if lap_result is not None:
                 prev_lap_ms = lap_result.lap_time_ms
                 _on_lap_complete(lap_result, ts)
@@ -336,6 +396,9 @@ def _on_sector_complete(result):
 def _on_lap_complete(result, ts):
     """Köridő rögzítésekor — log + uplink + telegram sor."""
     global lap_start_ts, lap_max_speed_kmh, prev_lap_max_kmh, lap_history
+    global lap_peak_lean_right, lap_peak_lean_left, lap_peak_kamm_g, lap_peak_kamm_angle
+    global session_peak_lean_right, session_peak_lean_left
+    global session_peak_kamm_g, session_peak_kamm_angle
 
     print("LAP #{}: {:.3f}s  {}  delta={:+.3f}s".format(
         result.lap_number,
@@ -355,17 +418,38 @@ def _on_lap_complete(result, ts):
         for ln in (track_cfg.sectors if track_cfg else [])
     ]
 
-    # Kör max sebessége (körönként nullázódik) — rögzítés előtt mentjük
-    this_lap_max = lap_max_speed_kmh
-    prev_lap_max_kmh = this_lap_max
-    lap_max_speed_kmh = 0.0
+    # Per-kör csúcsok mentése, majd nullázás
+    this_lap_max      = lap_max_speed_kmh
+    this_lean_right   = lap_peak_lean_right
+    this_lean_left    = lap_peak_lean_left
+    this_kamm_g       = lap_peak_kamm_g
+    this_kamm_angle   = lap_peak_kamm_angle
 
-    # Kor hozzaadasa a kijelzo listahoz (max 10 kor)
+    prev_lap_max_kmh  = this_lap_max
+    lap_max_speed_kmh  = 0.0
+    lap_peak_lean_right = 0.0
+    lap_peak_lean_left  = 0.0
+    lap_peak_kamm_g     = 0.0
+    lap_peak_kamm_angle = 0.0
+
+    # Session-szintű csúcsok frissítése (sosem nullázódnak körön belül)
+    if this_lean_right > session_peak_lean_right:
+        session_peak_lean_right = this_lean_right
+    if this_lean_left > session_peak_lean_left:
+        session_peak_lean_left = this_lean_left
+    if this_kamm_g > session_peak_kamm_g:
+        session_peak_kamm_g     = this_kamm_g
+        session_peak_kamm_angle = this_kamm_angle
+
+    # STATS képernyő frissítése, ha éppen azt nézi
+    disp._force_redraw = True
+
+    # Kör hozzáadása a kijelző listához (max 10 kör)
     lap_history.append({
-        'lap_number':  result.lap_number,
-        'lap_time_ms': result.lap_time_ms,
+        'lap_number':    result.lap_number,
+        'lap_time_ms':   result.lap_time_ms,
         'max_speed_kmh': this_lap_max,
-        'is_best':     result.is_best,
+        'is_best':       result.is_best,
     })
     if len(lap_history) > 10:
         lap_history.pop(0)
@@ -379,6 +463,10 @@ def _on_lap_complete(result, ts):
         sector_times_ms = sector_times_ms,
         gps_trace       = list(lap_det.current_trace),
         max_speed_kmh   = this_lap_max,
+        max_lean_right  = this_lean_right,
+        max_lean_left   = this_lean_left,
+        peak_kamm_g     = this_kamm_g,
+        peak_kamm_angle = this_kamm_angle,
     )
 
     # Telegram pufferbe tesszük (mindig)
@@ -390,6 +478,10 @@ def _on_lap_complete(result, ts):
         'max_speed_kmh':   this_lap_max,
         'sector_times_ms': sector_times_ms,
         'track_name':      track_cfg.name if track_cfg else '',
+        'max_lean_right':  this_lean_right,
+        'max_lean_left':   this_lean_left,
+        'peak_kamm_g':     this_kamm_g,
+        'peak_kamm_angle': this_kamm_angle,
     })
 
     # Ha van WiFi, azonnal kiküldjük a teljes sort
@@ -418,6 +510,31 @@ def _flush_telegram_queue():
         else:
             print("Telegram: kuldesi hiba, kesobb probaljuk")
             break
+
+
+def _send_session_to_telegram():
+    """Aktuális session JSON fájl elküldése Telegram-ra dokumentumként."""
+    if not telegram.is_enabled():
+        print("Telegram: nincs beallitva, kuldés kihagyva")
+        _beep(400, 300)
+        return
+    path = logger._session_path
+    if not path:
+        print("Telegram: nincs session fajl")
+        _beep(400, 300)
+        return
+    laps = lap_det.get_lap_count()
+    best = lap_det.get_best_lap_ms()
+    best_str = '{:.3f}s'.format(best / 1000.0) if best else '---'
+    caption = 'OverLAP session: {} kor, best {}'.format(laps, best_str)
+    print("Telegram: session fajl kuldese ({})".format(path))
+    ok = telegram.send_document(path, caption)
+    if ok:
+        _beep(1200, 150)
+        time.sleep_ms(160)
+        _beep(1600, 200)
+    else:
+        _beep(400, 500)
 
 
 def _try_immediate_uplink(result):
@@ -464,18 +581,21 @@ async def display_task():
             )
 
         disp.update(
-            gps               = gps,
-            lap_detector      = lap_det,
-            max_speed_kmh     = max_speed_kmh,
-            wifi_connected    = wifi_connected,
-            predicted_ms      = predicted_ms,
-            prev_lap_ms       = prev_lap_ms,
-            battery_pct       = battery_pct,
-            lap_start_ts      = lap_start_ts,
-            prev_lap_max_kmh  = prev_lap_max_kmh,
-            lap_history       = lap_history,
-            lean              = lean,
-            track_name        = track_cfg.name if track_cfg else None,
+            gps                  = gps,
+            lap_detector         = lap_det,
+            max_speed_kmh        = max_speed_kmh,
+            wifi_connected       = wifi_connected,
+            predicted_ms         = predicted_ms,
+            prev_lap_ms          = prev_lap_ms,
+            battery_pct          = battery_pct,
+            lap_start_ts         = lap_start_ts,
+            prev_lap_max_kmh     = prev_lap_max_kmh,
+            lap_history          = lap_history,
+            lean                 = lean,
+            track_name           = track_cfg.name if track_cfg else None,
+            session_lean_right   = session_peak_lean_right,
+            session_lean_left    = session_peak_lean_left,
+            session_kamm_g       = session_peak_kamm_g,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
 
@@ -581,6 +701,8 @@ async def touch_task():
                         lean.reset_peaks()
                         _beep(1000, 200)
                         disp._force_redraw = True
+                    elif disp._mode == 2:   # MODE_STATS — session küldése Telegram-ra
+                        _send_session_to_telegram()
         else:
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)

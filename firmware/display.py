@@ -97,7 +97,7 @@ class MotoDisplay:
         lcd.drawString("OverLAP", 75, 85)
         lcd.setTextColor(GRAY, BLACK)
         lcd.setTextSize(1)
-        lcd.drawString("v1.1  Lap Timing Platform", 55, 130)
+        lcd.drawString("v1.2  Lap Timing Platform", 55, 130)
         time.sleep_ms(1500)
         self._force_redraw = True
 
@@ -121,7 +121,8 @@ class MotoDisplay:
     def update(self, gps, lap_detector, max_speed_kmh=0.0,
                wifi_connected=False, predicted_ms=None, prev_lap_ms=None,
                battery_pct=None, lap_start_ts=None, prev_lap_max_kmh=None,
-               lap_history=None, lean=None, track_name=None):
+               lap_history=None, lean=None, track_name=None,
+               session_lean_right=0.0, session_lean_left=0.0, session_kamm_g=0.0):
         if self._mode == MODE_MAIN:
             self._draw_main(gps, lap_detector, max_speed_kmh,
                             wifi_connected, predicted_ms, prev_lap_ms,
@@ -129,7 +130,8 @@ class MotoDisplay:
         elif self._mode == MODE_SETUP:
             self._draw_setup(gps, wifi_connected, battery_pct, track_name=track_name)
         elif self._mode == MODE_STATS:
-            self._draw_stats(gps, lap_detector, max_speed_kmh, wifi_connected, battery_pct)
+            self._draw_stats(gps, lap_detector, max_speed_kmh, wifi_connected, battery_pct,
+                             session_lean_right, session_lean_left, session_kamm_g)
         elif self._mode == MODE_DIAG:
             self._draw_diag(gps, wifi_connected, battery_pct)
         elif self._mode == MODE_IMU:
@@ -425,7 +427,8 @@ class MotoDisplay:
     # MODE_STATS
     # ------------------------------------------------------------------
 
-    def _draw_stats(self, gps, lap_det, max_spd, wifi=False, battery_pct=None):
+    def _draw_stats(self, gps, lap_det, max_spd, wifi=False, battery_pct=None,
+                    session_lean_right=0.0, session_lean_left=0.0, session_kamm_g=0.0):
         if not self._force_redraw:
             return
 
@@ -444,23 +447,50 @@ class MotoDisplay:
 
         lcd.setTextSize(2)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("BEST LAP:", 10, 57)
+        lcd.drawString("BEST LAP:", 10, 50)
         lcd.setTextColor(YELLOW, BLACK)
-        lcd.drawString(_format_lap(best), 160, 57)
+        lcd.drawString(_format_lap(best), 160, 50)
 
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("KOROK:", 10, 87)
+        lcd.drawString("KOROK:", 10, 78)
         lcd.setTextColor(WHITE, BLACK)
-        lcd.drawString(str(laps), 160, 87)
+        lcd.drawString(str(laps), 160, 78)
 
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("MAX SPEED:", 10, 117)
+        lcd.drawString("MAX SPEED:", 10, 106)
         lcd.setTextColor(ORANGE, BLACK)
-        lcd.drawString("{:.0f} km/h".format(max_spd), 160, 117)
+        lcd.drawString("{:.0f} km/h".format(max_spd), 160, 106)
+
+        # --- IMU session csúcsok ---
+        lcd.setTextSize(1)
+        lcd.setTextColor(GRAY, BLACK)
+        lcd.drawString("MAX DOLES:", 10, 138)
+        if session_lean_right > 0 or session_lean_left > 0:
+            lcd.setTextSize(2)
+            lcd.setTextColor(CYAN, BLACK)
+            lcd.drawString("Bal {:2.0f}  Jobb {:2.0f}".format(
+                session_lean_left, session_lean_right), 10, 150)
+        else:
+            lcd.setTextSize(2)
+            lcd.setTextColor(DARK_GRAY, BLACK)
+            lcd.drawString("---", 10, 150)
+
+        lcd.setTextSize(1)
+        lcd.setTextColor(GRAY, BLACK)
+        lcd.drawString("MAX KAMM G:", 10, 178)
+        if session_kamm_g > 0.05:
+            lcd.setTextSize(2)
+            lcd.setTextColor(CYAN, BLACK)
+            lcd.drawString("{:.2f} G".format(session_kamm_g), 10, 190)
+        else:
+            lcd.setTextSize(2)
+            lcd.setTextColor(DARK_GRAY, BLACK)
+            lcd.drawString("---", 10, 190)
 
         lcd.setTextSize(1)
         lcd.setTextColor(DARK_GRAY, BLACK)
-        lcd.drawString("Erintsd meg a kovetkezo modhoz", 40, 220)
+        lcd.drawString("Hosszu erintes = Telegram kuldese", 18, 218)
+        lcd.drawString("Rovid erintes = kovetkezo mod", 30, 230)
 
         self._force_redraw = False
 
@@ -1040,7 +1070,7 @@ class MotoDisplay:
 
             lcd.setTextSize(2)
             lcd.setTextColor(CYAN, BLACK)
-            lcd.drawString("IMU KALIBRÁCIÓ", 35, 22)
+            lcd.drawString("IMU KALIBRACIO", 35, 22)
 
             lcd.setTextSize(1)
             lcd.setTextColor(GRAY, BLACK)

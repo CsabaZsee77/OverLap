@@ -1,11 +1,11 @@
-# MotoMeter — Dokumentáció Index
+# OverLAP — Dokumentáció Index
 
-**Projekt:** MotoMeter — Motoros Telemetria & Track Analytics Platform
+**Projekt:** OverLAP — Motoros Telemetria & Track Analytics Platform
 **Hardver:** M5Stack CoreS3 + AT6558 GPS + BMI270 IMU
 **Firmware:** MicroPython (UIFlow2 kompatibilis)
 **Backend:** Python / FastAPI
-**Verzió:** v0.1.0 (tervezési fázis)
-**Utolsó frissítés:** 2026-04-22
+**Verzió:** v1.2.0
+**Utolsó frissítés:** 2026-05-04
 
 ---
 
@@ -133,12 +133,12 @@ docs/
 ## Fejlesztési sorrend (MVP)
 
 ```
-[1] ✅ Tervezés, dokumentáció (jelen fázis)
-[2] 🔲 M01 firmware alap: GPS parse + köridőmérés
-[3] 🔲 M03 kijelző: köridő + státusz megjelenítés
-[4] 🔲 M02 szektorelemzés + prediktált köridő
-[5] 🔲 M04 WiFi uplink + egyszerű backend
-[6] 🔲 M01 Kalman szűrő (GPS+IMU fúzió)
+[1] ✅ Tervezés, dokumentáció
+[2] ✅ M01 firmware alap: GPS parse + köridőmérés (v1.2: 30m vonal, MIN_OUTLAP_MS)
+[3] ✅ M03 kijelző: köridő, lean, Kamm, SLIP, STATS, SETUP (v1.2: OverLAP branding)
+[4] ✅ M02 szektorelemzés + prediktált köridő
+[5] ✅ M04 WiFi uplink + offline log (v1.2: lean/Kamm Telegram + log mezők)
+[6] 🔲 M01 Kalman szűrő finomhangolás (GPS+IMU fúzió javítása)
 [7] 🔲 M05 pálya geometria editor (web)
 [8] 🔲 M06 session analitika dashboard
 [9] 🔲 M07 szinkronizált replay

@@ -2,9 +2,9 @@
 
 **Modul:** M03
 **Szint:** L1 – Üzleti Folyamat
-**Verzió:** v0.4.0
+**Verzió:** v1.2.0
 **Létrehozva:** 2026-04-22
-**Utolsó módosítás:** 2026-05-03
+**Utolsó módosítás:** 2026-05-04
 **Státusz:** ✅ Implementálva
 
 ---
@@ -18,7 +18,7 @@ Az M03 modul kezeli a CoreS3 beépített **2" IPS kijelzőjét** (320×240 px). 
 - Delta vizualizáció: zöld = javulás, piros = romlás
 - GPS státusz: mindig látható (fix elvesztéskor azonnali jelzés)
 - Tartóban/sisakban is olvasható: nagy, kontrasztos, mozgó számok
-- Zöld képernyővillans (1 mp): rajtvonal beállítás visszajelzése sisakból látható
+- Zöld képernyővillans (2 mp): rajtvonal beállítás visszajelzése sisakból látható
 
 ---
 
@@ -99,6 +99,7 @@ Lat G (vízszintes) vs Lon G (függőleges) trail grafikon:
 Aktuális dőlésszög és lateral G megjelenítése.
 Hosszú érintés → 20 mintás újrakalibrálás (accel referencia + gyro bias).
 „OK – egyenes" jelzés ha |szög| < 3°.
+**Képernyőcím: „IMU KALIBRACIO"** (ékezetek nélkül — MicroPython font-korlát).
 
 ### MODE_STATS (2) — session statisztika
 
@@ -110,7 +111,7 @@ LAT, LON, SPD, CRS, SAT, FIX, WiFi állapot — valós idejű GPS adatok.
 
 ### MODE_SETUP (1) — rajtvonal felvétel
 
-[BAL] GPS 20m — 2 mp hosszú érintés → zöld villanás + stopper indul
+[BAL] GPS 30m — 2 mp hosszú érintés → zöld villanás + stopper indul
 [JOBB] Fájlból (track.json) — rövid érintés
 Aktuális GPS koordináták (lat/lon/sat).
 
@@ -121,10 +122,11 @@ Aktuális GPS koordináták (lat/lon/sat).
 ```
 GPS alapú rajtvonal beállítás (bal oldal 2 mp tartás SETUP módban):
   1. Rövid hangjelzés (1200 Hz, 150 ms)
-  2. Teljes képernyő: ZÖLD — 800 ms-ig látható (sisakból is)
+  2. Teljes képernyő: ZÖLD — 2000 ms-ig látható (sisakból is)
   3. Automatikusan visszaáll MODE_MAIN-re
   4. STOPPER azonnal elindul (azonnali mérés)
-  5. Ha GPS nincs: mély hang (400 Hz, 500 ms), semmi nem változik
+  5. Per-kör IMU csúcsok (lean, Kamm) nullázódnak
+  6. Ha GPS nincs: mély hang (400 Hz, 500 ms), semmi nem változik
 ```
 
 ---
@@ -191,11 +193,11 @@ GPS NO FIX:            piros ● + "NO FIX"
 
 | Esemény | Következmény |
 |---------|-------------|
-| M01: lap_recorded | ELOZO + max sebessége frissítés, STOPPER nullázódik |
-| M01: set_finish_line_from_gps OK | Zöld villanás (800 ms), STOPPER indul |
+| M01: lap_recorded | ELOZO + max sebesség/lean/Kamm frissítés, STOPPER nullázódik |
+| M01: set_finish_line_from_gps OK | Zöld villanás (2000 ms), STOPPER indul, IMU csúcsok nullázódnak |
 | M02: predicted frissítve | PRED + DELTA frissítés (5 Hz) |
 | Érintés (rövid, nem SETUP) | Képernyő mód váltás |
-| Boot | MotoMeter logó (1.5 s) |
+| Boot | OverLAP logó v1.2 (1.5 s) |
 
 ---
 

@@ -1,14 +1,38 @@
 # telegram.py - Telegram Bot értesítések köridő eredményekhez
-# MotoMeter v0.1 - M5Stack CoreS3
+# OverLAP v1.2 - M5Stack CoreS3
 #
 # Beállítás (config.py):
 #   TELEGRAM_BOT_TOKEN = '7123...:AAF...'   (@BotFather adja)
 #   TELEGRAM_CHAT_ID   = '123456789'        (@userinfobot adja)
 
 import json
+import math
 
 
-_API_BASE = 'https://api.telegram.org/bot{}/sendMessage'
+_API_BASE     = 'https://api.telegram.org/bot{}/sendMessage'
+_API_DOC_PATH = '/bot{}/sendDocument'
+_BOUNDARY     = b'----OvLpBnd01'
+
+_KAMM_SECTORS = [
+    (22.5,  'gyorsítás'),
+    (67.5,  'gyorsítás + bal kanyar'),
+    (112.5, 'bal kanyar'),
+    (157.5, 'fékezés + bal kanyar'),
+    (202.5, 'fékezés'),
+    (247.5, 'fékezés + jobb kanyar'),
+    (292.5, 'jobb kanyar'),
+    (337.5, 'gyorsítás + jobb kanyar'),
+]
+
+
+def _kamm_sector(angle_deg):
+    """Kamm kör szektora az irányvektor szöge alapján.
+    0° = gyorsítás, 90° = bal kanyar, 180° = fékezés, 270° = jobb kanyar."""
+    a = angle_deg % 360
+    for limit, name in _KAMM_SECTORS:
+        if a < limit:
+            return name
+    return 'gyorsítás'
 
 
 class TelegramNotifier:
@@ -23,17 +47,19 @@ class TelegramNotifier:
 
     def send_lap(self, lap_number, lap_time_ms, delta_ms=None,
                  is_best=False, max_speed_kmh=0.0, sector_times_ms=None,
-                 track_name='', prev_lap_ms=None):
+                 track_name='', prev_lap_ms=None,
+                 max_lean_right=0.0, max_lean_left=0.0,
+                 peak_kamm_g=0.0, peak_kamm_angle=0.0):
         """Köridő értesítés küldése."""
         if not self._enabled:
             return False
 
-        mins  = lap_time_ms // 60000
-        secs  = (lap_time_ms % 60000) / 1000.0
+        mins     = lap_time_ms // 60000
+        secs     = (lap_time_ms % 60000) / 1000.0
         time_str = '{:d}:{:06.3f}'.format(mins, secs)
 
         lines = []
-        lines.append('MotoMeter - {}'.format(track_name) if track_name else 'MotoMeter')
+        lines.append('OverLAP - {}'.format(track_name) if track_name else 'OverLAP')
         lines.append('')
         lines.append('Kor #{}: {}{}'.format(
             lap_number, time_str, '  LEGJOBB!' if is_best else ''))
@@ -43,8 +69,18 @@ class TelegramNotifier:
             lines.append('Delta: {}{:.3f}s (vs legjobb)'.format(
                 sign, delta_ms / 1000.0))
 
+        lines.append('')
+
         if max_speed_kmh:
             lines.append('Max sebesseg: {:.0f} km/h'.format(max_speed_kmh))
+
+        if max_lean_right or max_lean_left:
+            lines.append('Max doles: Bal {:.0f}  Jobb {:.0f}'.format(
+                max_lean_left, max_lean_right))
+
+        if peak_kamm_g > 0.05:
+            sector = _kamm_sector(peak_kamm_angle)
+            lines.append('Max Kamm: {:.2f}G ({})'.format(peak_kamm_g, sector))
 
         if sector_times_ms:
             lines.append('')
@@ -63,11 +99,81 @@ class TelegramNotifier:
             return False
         return self._send(text)
 
+    def send_document(self, filepath, caption=''):
+        """Session JSON fájl küldése Telegram-ra dokumentumként (multipart)."""
+        if not self._enabled:
+            return False
+        try:
+            with open(filepath, 'rb') as f:
+                content = f.read()
+        except Exception as e:
+            print("Telegram: fajl olvasas hiba ->", e)
+            return False
+        filename = filepath.rsplit('/', 1)[-1]
+        print("Telegram: sendDocument {} ({} byte)".format(filename, len(content)))
+        return self._send_multipart(filename, content, caption)
+
+    def _send_multipart(self, filename, content, caption=''):
+        """Multipart/form-data küldés raw SSL socketen keresztül."""
+        bnd = _BOUNDARY
+
+        parts = []
+        parts.append(b'--' + bnd + b'\r\n')
+        parts.append(b'Content-Disposition: form-data; name="chat_id"\r\n\r\n')
+        parts.append(self._chat_id.encode() + b'\r\n')
+        if caption:
+            parts.append(b'--' + bnd + b'\r\n')
+            parts.append(b'Content-Disposition: form-data; name="caption"\r\n\r\n')
+            parts.append(caption.encode('utf-8') + b'\r\n')
+        parts.append(b'--' + bnd + b'\r\n')
+        parts.append(b'Content-Disposition: form-data; name="document"; filename="'
+                     + filename.encode() + b'"\r\n')
+        parts.append(b'Content-Type: application/json\r\n\r\n')
+        parts.append(content)
+        parts.append(b'\r\n')
+        parts.append(b'--' + bnd + b'--\r\n')
+
+        body_len = sum(len(p) for p in parts)
+        host = 'api.telegram.org'
+        path = _API_DOC_PATH.format(self._token)
+        header = (
+            'POST {} HTTP/1.0\r\n'
+            'Host: {}\r\n'
+            'Content-Type: multipart/form-data; boundary=----OvLpBnd01\r\n'
+            'Content-Length: {}\r\n'
+            'Connection: close\r\n\r\n'
+        ).format(path, host, body_len).encode()
+
+        try:
+            import socket, ssl
+            s = socket.socket()
+            s.settimeout(30)
+            s.connect(socket.getaddrinfo(host, 443)[0][-1])
+            s = ssl.wrap_socket(s, server_hostname=host)
+            s.write(header)
+            for part in parts:
+                s.write(part)
+            resp = b''
+            while True:
+                try:
+                    chunk = s.read(512)
+                    if not chunk:
+                        break
+                    resp += chunk
+                except Exception:
+                    break
+            s.close()
+            ok = b'200 OK' in resp or b'"ok":true' in resp
+            print("Telegram: sendDocument", "OK" if ok else "HIBA")
+            return ok
+        except Exception as e:
+            print("Telegram: sendDocument hiba ->", type(e).__name__, e)
+            return False
+
     def _send(self, text):
-        url = _API_BASE.format(self._token)
+        url  = _API_BASE.format(self._token)
         body = json.dumps({'chat_id': self._chat_id, 'text': text})
 
-        # Próbáljuk urequests-szel (HTTPS)
         try:
             import requests
             resp = requests.post(
@@ -84,7 +190,6 @@ class TelegramNotifier:
         except Exception as e:
             print("Telegram: requests hiba ->", type(e).__name__, e)
 
-        # Fallback: raw socket + ssl
         try:
             import socket, ssl
             host = 'api.telegram.org'

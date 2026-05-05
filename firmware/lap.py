@@ -13,8 +13,9 @@ import time
 
 
 # Köridő / szakaszidő validitási határok (ms)
-MIN_LAP_MS = 10_000    # 10 s  — kizárja a téves/visszafordulós detektálást
-MAX_LAP_MS = 600_000   # 10 min — kizárja a GPS kiesés utáni hamis detektálást
+MIN_LAP_MS    = 10_000   # 10 s  — kizárja a téves/visszafordulós detektálást
+MAX_LAP_MS    = 600_000  # 10 min — kizárja a GPS kiesés utáni hamis detektálást
+MIN_OUTLAP_MS = 5_000    # 5 s  — vonal beállítása után ennyi idő előtt nem fogad el 1. átlépést
 
 # Üzemmódok
 MODE_CIRCUIT = 'circuit'   # start = finish vonal
@@ -91,6 +92,7 @@ class LapDetector:
         self._best_lap_ms   = None
         self._lap_count     = 0
         self._last_cross_ms = None   # utolsó érvényes start-átlépés ticks_ms-ben
+        self._line_set_ms   = None   # mikor lett rögzítve a vonal (outlap guard)
 
         # GPS trace az aktuális körhöz (M04-nek)
         self.current_trace = []
@@ -111,6 +113,7 @@ class LapDetector:
         self._fl_lat1 = lat1;  self._fl_lon1 = lon1
         self._fl_lat2 = lat2;  self._fl_lon2 = lon2
         self._has_finish = True
+        self._line_set_ms = time.ticks_ms()
         self._update_state()
         print("LapDetector: célvonal → ({:.6f},{:.6f})–({:.6f},{:.6f})".format(
             lat1, lon1, lat2, lon2))
@@ -187,6 +190,12 @@ class LapDetector:
         )
 
         if self.state == STATE_WAITING:
+            # Outlap guard: vonal beállítása után MIN_OUTLAP_MS-ig nem fogadjuk el
+            if self._line_set_ms is not None:
+                since_set = time.ticks_diff(t_cross, self._line_set_ms)
+                if since_set < MIN_OUTLAP_MS:
+                    print("LapDetector: outlap átlépés túl korai ({}ms), kihagyva".format(since_set))
+                    return None
             # Outlap vége — mérés indul
             self._last_cross_ms = t_cross
             self.state = STATE_IN_LAP
@@ -293,6 +302,7 @@ class LapDetector:
         self._best_lap_ms     = None
         self._lap_count       = 0
         self._last_cross_ms   = None
+        self._line_set_ms     = None
         self.current_trace    = []
 
     # ------------------------------------------------------------------
@@ -341,7 +351,7 @@ class LapDetector:
 
     @classmethod
     def _segments_intersect(cls, p1x, p1y, p2x, p2y, l1x, l1y, l2x, l2y):
-        """Igaz ha a P1→P2 szegmens metszi az L1→L2 szegmenst."""
+        """Igaz ha a P1→P2 szegmens metszi az L1→L2 szegmenst (CCW teszt)."""
         d1 = cls._direction(l1x, l1y, l2x, l2y, p1x, p1y)
         d2 = cls._direction(l1x, l1y, l2x, l2y, p2x, p2y)
         d3 = cls._direction(p1x, p1y, p2x, p2y, l1x, l1y)
