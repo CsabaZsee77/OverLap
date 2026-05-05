@@ -201,6 +201,7 @@ export default function TrackEditorPage() {
   const [saving,     setSaving]     = useState(false)
   const [savedId,    setSavedId]    = useState<number | null>(isEdit ? trackId : null)
   const [tileStyle,  setTileStyle]  = useState<'dark' | 'satellite'>('dark')
+  const [panelOpen,  setPanelOpen]  = useState(true)
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const mapContRef   = useRef<HTMLDivElement>(null)
@@ -510,10 +511,14 @@ export default function TrackEditorPage() {
   const modeActive = (mode: DrawMode) => drawMode === mode
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden relative">
 
       {/* ── Bal panel ────────────────────────────────────────────────────── */}
-      <div className="w-64 shrink-0 bg-[#13151e] border-r border-gray-800 flex flex-col overflow-y-auto">
+      <div className={`
+        shrink-0 bg-[#13151e] border-r border-gray-800 flex flex-col overflow-y-auto
+        transition-all duration-200
+        ${panelOpen ? 'w-64' : 'w-0 overflow-hidden border-r-0'}
+      `}>
 
         {/* Fejléc */}
         <div className="px-4 py-3 border-b border-gray-800">
@@ -723,6 +728,17 @@ export default function TrackEditorPage() {
       {/* ── Térkép ───────────────────────────────────────────────────────── */}
       <div className="flex-1 relative">
         <div ref={mapContRef} className="w-full h-full" />
+
+        {/* Panel toggle gomb */}
+        <button
+          onClick={() => setPanelOpen(o => !o)}
+          className="absolute top-1/2 -translate-y-1/2 left-0 z-[1000]
+            bg-gray-900/90 border border-gray-700 border-l-0 rounded-r
+            px-1 py-3 text-gray-400 hover:text-white transition-colors shadow-lg"
+          title={panelOpen ? 'Panel bezárása' : 'Panel megnyitása'}
+        >
+          {panelOpen ? '◀' : '▶'}
+        </button>
 
         {/* Tile réteg választó */}
         <button

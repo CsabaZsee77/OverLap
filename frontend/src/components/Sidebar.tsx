@@ -6,18 +6,32 @@ const NAV = [
   { to: '/leaderboard', label: 'Leaderboard',    icon: '🏆' },
 ]
 
-export default function Sidebar() {
+interface Props {
+  onClose?: () => void
+}
+
+export default function Sidebar({ onClose }: Props) {
   return (
-    <aside className="w-52 shrink-0 bg-[#13151e] border-r border-gray-800 flex flex-col">
+    <aside className="w-52 h-full shrink-0 bg-[#13151e] border-r border-gray-800 flex flex-col">
       {/* Logo */}
-      <div className="px-5 py-4 border-b border-gray-800">
+      <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 font-bold text-lg tracking-widest">7A</span>
           <div>
             <div className="text-white font-semibold text-sm leading-none">TRACK ANALYZER</div>
-            <div className="text-gray-500 text-xs mt-0.5">MotoMeter v0.1</div>
+            <div className="text-gray-500 text-xs mt-0.5">OverLAP v1.2</div>
           </div>
         </div>
+        {/* Bezárás gomb — csak mobilon látható */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden text-gray-500 hover:text-white text-lg leading-none ml-2"
+            aria-label="Bezárás"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -27,6 +41,7 @@ export default function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.to === '/'}
+            onClick={onClose}
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                 isActive
