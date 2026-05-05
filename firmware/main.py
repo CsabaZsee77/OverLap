@@ -447,10 +447,13 @@ async def gps_task():
             )
 
             # ── IMU adatok hozzáfűzése az utolsó trace ponthoz ──
-            # A lap_det.update() tuple-t append-el; itt dict-re cseréljük
-            # hogy a lean/Kamm adatok is bekerüljenek a visszajátszható logba.
+            # lap_det.update() tuple-t append-el; csak akkor cseréljük dict-re,
+            # ha az utolsó elem még tuple (nem volt már feldolgozva).
             if lap_det.current_trace and lean.is_ready:
                 lp = lap_det.current_trace[-1]
+            else:
+                lp = None
+            if lp is not None and isinstance(lp, tuple) and lean.is_ready:
                 lat_g = lean.lateral_g
                 lon_g = lean.lon_g
                 lap_det.current_trace[-1] = {
