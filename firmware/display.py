@@ -451,30 +451,44 @@ class MotoDisplay:
 
         lcd.setTextSize(2)
         lcd.setTextColor(CYAN, BLACK)
-        lcd.drawString("SZERVER PALYA", 55, 22)
+        lcd.drawString("PALYA VALASZTAS", 40, 22)
         lcd.drawLine(0, 44, 320, 44, DARK_GRAY)
 
-        if self.track_list_status == 'loading':
+        if self.track_list_status == 'syncing':
             lcd.setTextSize(2)
             lcd.setTextColor(YELLOW, BLACK)
-            lcd.drawString("Letoltes...", 90, 95)
+            lcd.drawString("Szinkronizalas...", 45, 90)
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("palya adatok letoltese", 65, 118)
 
         elif self.track_list_status == 'error':
             lcd.setTextSize(1)
             lcd.setTextColor(RED, BLACK)
-            lcd.drawString("Hiba! Ellenorizd:", 80, 85)
-            lcd.drawString("WiFi csatlakozast", 70, 105)
-            lcd.drawString("es BACKEND_URL-t", 75, 120)
+            lcd.drawString("Szinkron sikertelen!", 70, 80)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Ellenorizd a WiFi-t", 65, 100)
+            lcd.drawString("es a BACKEND_URL-t", 68, 116)
+            lcd.setTextColor(YELLOW, BLACK)
+            lcd.drawString("Ujra: BAL hosszan", 75, 140)
 
         elif not self.track_list:
             lcd.setTextSize(1)
             lcd.setTextColor(GRAY, BLACK)
-            lcd.drawString("Nincsenek palya adatok", 60, 105)
+            lcd.drawString("Nincsenek helyi palya adatok.", 35, 80)
+            lcd.drawString("Eloszor toltsd le a szerverrol:", 20, 96)
+            lcd.setTextColor(YELLOW, BLACK)
+            lcd.drawString("BAL hosszan = szinkron a szerverrel", 8, 116)
 
         else:
             n   = len(self.track_list)
             idx = self.track_sel_idx % n
             t   = self.track_list[idx]
+
+            # Forrás jelzés (helyi cache)
+            lcd.setTextSize(1)
+            lcd.setTextColor(DARK_GRAY, BLACK)
+            lcd.drawString("helyi", 280, 48)
 
             name = t.get('name', '?')
             if len(name) > 20:
@@ -485,32 +499,39 @@ class MotoDisplay:
 
             lcd.setTextSize(1)
             lcd.setTextColor(GRAY, BLACK)
+            fl  = t.get('finish_line', {})
             length  = t.get('length_m')
-            sects   = t.get('sectors_count', 0)
+            sects   = len(t.get('sectors', []))
             ttype   = t.get('track_type', '?')
-            country = t.get('country', '')
-            detail  = '{}  {}m  {} szek.  {}'.format(
+            detail  = '{}  {}m  {} szek.'.format(
                 ttype,
                 int(length) if length else '?',
                 sects,
-                country,
             )
             lcd.drawString(detail, 10, 83)
 
             lcd.setTextColor(ORANGE, BLACK)
-            idx_str = '[{}/{}]'.format(idx + 1, n)
-            lcd.drawString(idx_str, 140, 100)
+            lcd.drawString('[{}/{}]'.format(idx + 1, n), 140, 100)
 
         lcd.drawLine(0, 122, 320, 122, DARK_GRAY)
         lcd.setTextSize(1)
+        # Bal: lapozás | Jobb: aktivál
         lcd.setTextColor(YELLOW, BLACK)
-        lcd.drawString("< BAL: elozo", 8, 132)
-        lcd.drawString("JOBB: kovetkezo >", 168, 132)
-        lcd.drawLine(0, 150, 320, 150, DARK_GRAY)
-        lcd.setTextColor(GREEN, BLACK)
-        lcd.drawString("hosszan: betolt + aktival", 45, 158)
+        lcd.drawString("< elozo", 8, 132)
+        lcd.drawString("kovetkezo >", 210, 132)
+        lcd.drawLine(0, 148, 320, 148, DARK_GRAY)
+        # Hosszú bal: szinkron | Hosszú jobb: aktivál
+        lcd.setTextColor(CYAN, BLACK)
+        lcd.drawString("hosszan <", 8, 157)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("rovid: vissza SETUP-ba", 60, 175)
+        lcd.drawString("szerver szinkron", 80, 157)
+        lcd.setTextColor(GREEN, BLACK)
+        lcd.drawString("hosszan >", 8, 172)
+        lcd.setTextColor(GRAY, BLACK)
+        lcd.drawString("aktival (WiFi nelkul)", 80, 172)
+        lcd.drawLine(0, 188, 320, 188, DARK_GRAY)
+        lcd.setTextColor(DARK_GRAY, BLACK)
+        lcd.drawString("rovid kozepen: vissza SETUP-ba", 30, 196)
 
         self._force_redraw = False
 
