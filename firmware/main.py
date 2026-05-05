@@ -164,18 +164,17 @@ connect_wifi()
 # PÁLYA SZINKRONIZÁCIÓ (szerver → /flash/track.json)
 # ============================================================
 if config.ACTIVE_TRACK_ID and config.BACKEND_URL:
-    try:
-        import network as _net
-        _wlan = _net.WLAN(_net.STA_IF)
-        if not _wlan.isconnected():
-            print("TrackSync: várakozás WiFi-re (max 10s)...")
-            track_sync_wait(_wlan, timeout_ms=10000)
-        if _wlan.isconnected():
+    _wlan = network.WLAN(network.STA_IF)
+    if not _wlan.isconnected():
+        print("TrackSync: várakozás WiFi-re (max 10s)...")
+        track_sync_wait(_wlan, timeout_ms=10000)
+    if _wlan.isconnected():
+        try:
             track_sync(config.BACKEND_URL, config.ACTIVE_TRACK_ID)
-        else:
-            print("TrackSync: WiFi nem érhető el — lokális track.json marad")
-    except Exception as _e:
-        print("TrackSync: hiba —", _e)
+        except Exception as _e:
+            print("TrackSync: hiba —", _e)
+    else:
+        print("TrackSync: WiFi nem érhető el — lokális track.json marad")
 
 # ============================================================
 # PÁLYA KONFIGURÁCIÓ

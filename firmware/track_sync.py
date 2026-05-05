@@ -25,7 +25,7 @@ def sync(backend_url, track_id, timeout_ms=8000):
 
     try:
         import urequests
-        r = urequests.get(url, timeout=timeout_ms // 1000)
+        r = urequests.get(url)
         if r.status_code != 200:
             print('TrackSync: HTTP {} hiba'.format(r.status_code))
             r.close()
