@@ -9,6 +9,16 @@ _ACTIVE  = '/flash/track.json'
 _CACHE   = '/flash/tracks_cache.json'
 
 
+def _http_get(url):
+    """urequests vagy requests — M5Stack és standard MicroPython kompatibilis."""
+    try:
+        import urequests
+        return urequests.get(url)
+    except ImportError:
+        import requests
+        return requests.get(url)
+
+
 def sync(backend_url, track_id):
     """Letölti az adott pálya firmware-json-ját → /flash/track.json."""
     if not backend_url or not track_id:
@@ -16,8 +26,7 @@ def sync(backend_url, track_id):
     url = '{}/api/tracks/{}/firmware-json'.format(backend_url.rstrip('/'), track_id)
     print('TrackSync: letöltés → {}'.format(url))
     try:
-        import urequests
-        r = urequests.get(url)
+        r = _http_get(url)
         if r.status_code != 200:
             print('TrackSync: HTTP {} hiba'.format(r.status_code))
             r.close()
@@ -46,10 +55,8 @@ def sync_all(backend_url):
     if not backend_url:
         return 0
     try:
-        import urequests
-
         # 1. Lista
-        r = urequests.get(backend_url.rstrip('/') + '/api/tracks/')
+        r = _http_get(backend_url.rstrip('/') + '/api/tracks/')
         if r.status_code != 200:
             print('TrackSync sync_all: lista hiba HTTP {}'.format(r.status_code))
             r.close()
@@ -64,12 +71,12 @@ def sync_all(backend_url):
             if not tid:
                 continue
             try:
-                r2 = urequests.get(
+                r2 = _http_get(
                     backend_url.rstrip('/') + '/api/tracks/{}/firmware-json'.format(tid)
                 )
                 if r2.status_code == 200:
                     d = r2.json()
-                    d['_id'] = tid   # megőrizzük az ID-t referenciának
+                    d['_id'] = tid
                     full.append(d)
                     print('TrackSync: OK — {}'.format(d.get('name', tid)))
                 r2.close()

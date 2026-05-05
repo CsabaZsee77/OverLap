@@ -11,7 +11,7 @@
 # Backend végpont: POST /api/sessions/upload
 # Payload: SessionUpload JSON (lásd backend/schemas.py)
 #
-# MicroPython HTTP: urequests modul (M5Stack beépített)
+# MicroPython HTTP: urequests (standard) vagy requests (M5Stack)
 
 import json
 import time
@@ -61,8 +61,11 @@ class Uplink:
 
         for attempt in range(MAX_RETRIES):
             try:
-                import urequests
-                resp = urequests.post(
+                try:
+                    import urequests as _http
+                except ImportError:
+                    import requests as _http
+                resp = _http.post(
                     endpoint,
                     data=body,
                     headers={'Content-Type': 'application/json'},
@@ -133,8 +136,11 @@ class Uplink:
         if not self._url:
             return False
         try:
-            import urequests
-            resp = urequests.get(self._url + '/api/health', timeout=5)
+            try:
+                import urequests as _http
+            except ImportError:
+                import requests as _http
+            resp = _http.get(self._url + '/api/health')
             ok   = resp.status_code == 200
             resp.close()
             return ok
