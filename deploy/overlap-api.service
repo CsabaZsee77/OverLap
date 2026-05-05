@@ -1,0 +1,15 @@
+[Unit]
+Description=OverLAP API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=overlap
+WorkingDirectory=/home/overlap/OverLap/backend
+Environment="PATH=/home/overlap/OverLap/backend/venv/bin"
+ExecStart=/home/overlap/OverLap/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

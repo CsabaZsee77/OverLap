@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #0d0e12;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Leaflet dark overrides */
+.leaflet-container {
+  background: #1a1d26 !important;
+}
+.leaflet-tile-pane { filter: brightness(0.75) saturate(0.8); }
+
+/* Recharts tooltip */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #1e2130 !important;
+  border-color: #374151 !important;
+  border-radius: 6px !important;
+}
+
+/* ── Térkép marker animációk ─────────────────────────────────────────────────
+   .mm-holding  → hosszú nyomás folyamatban (0–500ms)
+   .mm-editing  → szerkesztési mód aktív (drag engedélyezve)
+   --------------------------------------------------------------------------- */
+
+/* Hosszú nyomás közben: kör "kitágul" 500ms alatt */
+.mm-holding > div {
+  animation: mm-hold-grow 0.5s ease forwards !important;
+}
+@keyframes mm-hold-grow {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0   rgba(251,191,36,0.0); }
+  60%  { transform: scale(1.2); box-shadow: 0 0 0 4px rgba(251,191,36,0.3); }
+  100% { transform: scale(1.4); box-shadow: 0 0 0 8px rgba(251,191,36,0.5); }
+}
+
+/* Szerkesztési mód: narancs ragyogás + move kurzor */
+.mm-editing > div {
+  box-shadow: 0 0 0 5px rgba(251,191,36,0.55) !important;
+  transform: scale(1.25) !important;
+  cursor: move !important;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+/* Alapértelmezett marker kurzor: nyíl
+   .leaflet-marker-icon.mm-marker — ez az a DOM elem amin a Leaflet is dolgozik */
+.leaflet-marker-icon.mm-marker,
+.leaflet-marker-icon.mm-marker > div,
+.leaflet-marker-icon.mm-marker * {
+  cursor: default !important;
+}
+
+/* Szerkesztési módban move kurzor */
+.leaflet-marker-icon.mm-editing,
+.leaflet-marker-icon.mm-editing > div,
+.leaflet-marker-icon.mm-editing * {
+  cursor: move !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1a1d26; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
