@@ -615,9 +615,14 @@ def _flush_telegram_queue():
 
 
 def _send_session_to_telegram():
-    """Session összefoglaló + opcionálisan a JSON fájl elküldése Telegram-ra."""
+    """Session log elküldése Telegram-ra JSON dokumentumként (GPS trace nélkül).
+
+    A logger._session_data már RAM-ban van, ezért fájlolvasás nélkül
+    szerializáljuk. A gps_trace mezőket kihagyjuk — azok a szerver feltöltéshez
+    kellenek, nem Telegramhoz, és megakadályoznák a küldést MemoryError miatt.
+    """
     if not telegram.is_enabled():
-        print("Telegram: nincs beallitva, kuldés kihagyva")
+        print("Telegram: nincs beallitva")
         _beep(400, 300)
         return
     if not wifi_connected:
@@ -626,51 +631,44 @@ def _send_session_to_telegram():
         _beep(400, 300)
         return
 
-    # Szöveges összefoglaló in-memory adatokból (nem igényel fájlolvasást,
-    # ezért sosem bukik el MemoryError-on)
+    session = logger._session_data
+    if not session:
+        print("Telegram: nincs aktiv session")
+        _beep(400, 300)
+        return
+
+    import json as _json
+
+    # Kompakt JSON a GPS trace nélkül (tipikusan <10 KB 10 körnél)
+    compact_laps = []
+    for lap in session.get('laps', []):
+        compact_lap = {k: v for k, v in lap.items() if k != 'gps_trace'}
+        compact_laps.append(compact_lap)
+
+    compact = {k: v for k, v in session.items() if k != 'laps'}
+    compact['laps'] = compact_laps
+
+    try:
+        payload = _json.dumps(compact).encode('utf-8')
+    except Exception as e:
+        print("Telegram: szerializalas hiba ->", e)
+        _beep(400, 500)
+        return
+
     laps     = lap_det.get_lap_count()
     best     = lap_det.get_best_lap_ms()
     best_str = '{:.3f}s'.format(best / 1000.0) if best else '---'
-    tname    = track_cfg.name if track_cfg else ''
+    tname    = track_cfg.name if track_cfg else 'session'
+    caption  = 'OverLAP | {} | {} kor | best {}'.format(tname, laps, best_str)
 
-    lines = []
-    lines.append('OverLAP Session' + (' — ' + tname if tname else ''))
-    lines.append('')
-    lines.append('{} teljesitett kor, legjobb: {}'.format(laps, best_str))
+    # Fájlnév a session path alapján, vagy generált
+    path = logger._session_path
+    fname = path.rsplit('/', 1)[-1] if path else 'overlap_session.json'
 
-    if lap_history:
-        lines.append('')
-        for lh in lap_history:
-            mins = lh['lap_time_ms'] // 60000
-            secs = (lh['lap_time_ms'] % 60000) / 1000.0
-            star = ' BEST' if lh.get('is_best') else ''
-            lines.append('  Kor #{}: {:d}:{:06.3f}{}'.format(
-                lh['lap_number'], mins, secs, star))
-
-    if session_peak_lean_right or session_peak_lean_left:
-        lines.append('')
-        lines.append('Max doles: Bal {:.0f}  Jobb {:.0f}'.format(
-            session_peak_lean_left, session_peak_lean_right))
-
-    if session_peak_kamm_g > 0.05:
-        lines.append('Max Kamm G: {:.2f}G'.format(session_peak_kamm_g))
-
-    print("Telegram: session summary kuldese")
-    ok = telegram.send_text('\n'.join(lines))
+    print("Telegram: session doc kuldese ({} byte)".format(len(payload)))
+    ok = telegram._send_multipart(fname, payload, caption)
 
     if ok:
-        # Ha a fájl kicsi (<= 40 KB), küldjük dokumentumként is
-        path = logger._session_path
-        if path:
-            try:
-                fsize = os.stat(path)[6]
-                if fsize <= 40960:
-                    print("Telegram: doc kuldese ({} byte)".format(fsize))
-                    telegram.send_document(path, tname)
-                else:
-                    print("Telegram: doc tul nagy ({} byte), kihagyva".format(fsize))
-            except Exception as _e:
-                print("Telegram: doc hiba ->", _e)
         _beep(1200, 150)
         time.sleep_ms(160)
         _beep(1600, 200)
