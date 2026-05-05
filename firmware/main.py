@@ -73,7 +73,7 @@ from overlap.gps          import GPSSensor
 from overlap.lap          import LapDetector, MODE_CIRCUIT, MODE_STAGE
 from overlap.sector       import SectorDetector
 from overlap.delta        import LapPredictor
-from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB, MODE_STATS
+from overlap.display      import MotoDisplay, MODE_IMU, MODE_CALIB, MODE_STATS, MODE_TRACK_SELECT
 from overlap.track_loader import load_track, save_track, make_track_from_gps
 from overlap.track_sync   import sync as track_sync, wait_wifi as track_sync_wait
 from overlap.logger       import SessionLogger
@@ -310,6 +310,71 @@ def set_finish_line_from_file():
     _beep(1200, 150)
     disp.flash_screen(0x00FF00, 2000)  # zold = siker
     return True
+
+# ============================================================
+# PÁLYA VÁLASZTÓ (szerver lista + letöltés)
+# ============================================================
+
+def _enter_track_select():
+    """Lekéri a szerver pálya listát, majd belép a track select módba."""
+    disp.track_list        = []
+    disp.track_sel_idx     = 0
+    disp.track_list_status = 'loading'
+    disp._mode             = MODE_TRACK_SELECT
+    disp._force_redraw     = True
+
+    if not config.BACKEND_URL:
+        disp.track_list_status = 'error'
+        return
+
+    try:
+        import urequests
+        r = urequests.get(config.BACKEND_URL.rstrip('/') + '/api/tracks/')
+        if r.status_code == 200:
+            disp.track_list        = r.json()
+            disp.track_list_status = 'ok'
+        else:
+            disp.track_list_status = 'error'
+        r.close()
+    except Exception as e:
+        print('TrackSelect fetch hiba:', e)
+        disp.track_list_status = 'error'
+
+    disp._force_redraw = True
+
+
+def _download_and_apply_selected():
+    """Letölti a kiválasztott pályát és aktiválja."""
+    global track_cfg
+    n = len(disp.track_list)
+    if not n:
+        return
+    t   = disp.track_list[disp.track_sel_idx % n]
+    tid = t.get('id')
+    if not tid:
+        return
+
+    ok = track_sync(config.BACKEND_URL, tid)
+    if ok:
+        tc = load_track()
+        if tc and tc.is_ready:
+            track_cfg = tc
+            lap_det.set_mode(MODE_STAGE if tc.is_stage else MODE_CIRCUIT)
+            fl = tc.finish_line
+            lap_det.set_finish_line(fl.lat1, fl.lon1, fl.lat2, fl.lon2)
+            if tc.is_stage and tc.has_start_line:
+                sl = tc.start_line
+                lap_det.set_start_line(sl.lat1, sl.lon1, sl.lat2, sl.lon2)
+            sec_det.set_sectors(tc.sectors)
+            predictor.set_sector_count(len(tc.sectors))
+            print("TrackSelect: betöltve →", tc.name)
+            _beep(1200, 200)
+            disp.flash_screen(0x003300, 600)
+            disp._mode         = 1   # vissza SETUP-ba
+            disp._force_redraw = True
+            return
+    _beep(400, 500)
+
 
 # ============================================================
 # ASYNC TASKOK
@@ -692,14 +757,18 @@ async def touch_task():
                 action_taken = False
                 try:
                     touch_x = M5.Touch.getX()
+                    touch_y = M5.Touch.getY()
                 except Exception:
                     touch_x = 160
+                    touch_y = 100
 
             if not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms >= SET_HOLD_MS:
                     action_taken = True
-                    if disp._mode == 1 and touch_x < 160:   # SETUP bal = GPS
+                    if disp._mode == 1 and touch_y >= 210:  # SETUP lent = szerver pálya
+                        _enter_track_select()
+                    elif disp._mode == 1 and touch_x < 160:   # SETUP bal = GPS
                         ok = set_finish_line_from_gps()
                         if ok:
                             disp._mode = 0
@@ -707,6 +776,8 @@ async def touch_task():
                         ok = set_finish_line_from_file()
                         if ok:
                             disp._mode = 0
+                    elif disp._mode == MODE_TRACK_SELECT:       # TRACK SELECT hosszú = betölt
+                        _download_and_apply_selected()
                     elif disp._mode == MODE_CALIB:   # CALIB hosszú = kalibrálás
                         ok = lean.calibrate()
                         if ok:
@@ -724,9 +795,24 @@ async def touch_task():
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
                 if held_ms < SET_HOLD_MS:
-                    if disp._mode == 1:   # SETUP-ban bármilyen rövid érintés = időmérő
-                        disp._mode = 0
-                        disp._force_redraw = True
+                    if disp._mode == MODE_TRACK_SELECT:   # rövid = lapozás
+                        n = len(disp.track_list)
+                        if n > 1:
+                            if touch_x < 160:
+                                disp.track_sel_idx = (disp.track_sel_idx - 1) % n
+                            else:
+                                disp.track_sel_idx = (disp.track_sel_idx + 1) % n
+                            disp._force_redraw = True
+                        elif n == 0:
+                            # nincs lista → vissza SETUP
+                            disp._mode         = 1
+                            disp._force_redraw = True
+                    elif disp._mode == 1:   # SETUP rövid = időmérő (kivéve lent)
+                        if touch_y >= 210:
+                            _enter_track_select()
+                        else:
+                            disp._mode = 0
+                            disp._force_redraw = True
                     else:
                         disp.next_mode()
             held_since   = None

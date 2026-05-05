@@ -24,24 +24,26 @@ PEAK_COLOR = 0xFF6600   # narancssárga — peak hold mutatók
 # ============================================================
 # KEPERNYO MODOK
 # ============================================================
-MODE_MAIN        = 0
-MODE_SETUP       = 1
-MODE_STATS       = 2
-MODE_DIAG        = 3
-MODE_IMU         = 4
-MODE_CALIB       = 5
-MODE_KAMM        = 6
-MODE_SLIP        = 7
+MODE_MAIN         = 0
+MODE_SETUP        = 1
+MODE_STATS        = 2
+MODE_DIAG         = 3
+MODE_IMU          = 4
+MODE_CALIB        = 5
+MODE_KAMM         = 6
+MODE_SLIP         = 7
+MODE_TRACK_SELECT = 8
 
 MODE_NAMES = {
-    MODE_MAIN:  "MAIN",
-    MODE_SETUP: "SETUP",
-    MODE_STATS: "STATS",
-    MODE_DIAG:  "DIAG",
-    MODE_IMU:   "LEAN",
-    MODE_CALIB: "CALIB",
-    MODE_KAMM:  "KAMM",
-    MODE_SLIP:  "SLIP",
+    MODE_MAIN:         "MAIN",
+    MODE_SETUP:        "SETUP",
+    MODE_STATS:        "STATS",
+    MODE_DIAG:         "DIAG",
+    MODE_IMU:          "LEAN",
+    MODE_CALIB:        "CALIB",
+    MODE_KAMM:         "KAMM",
+    MODE_SLIP:         "SLIP",
+    MODE_TRACK_SELECT: "PALYA",
 }
 
 
@@ -84,6 +86,11 @@ class MotoDisplay:
         self._kamm_lon_smooth   = 0.0   # low-pass szűrt lon_g a kör sugárhoz
 
         self._force_redraw = True
+
+        # Pálya választó állapot
+        self.track_list        = []   # [{id, name, track_type, length_m, sectors_count, country}]
+        self.track_sel_idx     = 0
+        self.track_list_status = 'ok'  # 'loading' | 'ok' | 'error'
 
     # ------------------------------------------------------------------
     # Publikus API
@@ -142,6 +149,8 @@ class MotoDisplay:
             self._draw_slip(gps, wifi_connected, battery_pct, lean)
         elif self._mode == MODE_CALIB:
             self._draw_calib(gps, wifi_connected, battery_pct, lean)
+        elif self._mode == MODE_TRACK_SELECT:
+            self._draw_track_select(wifi_connected, battery_pct)
 
     # ------------------------------------------------------------------
     # MODE_MAIN  (320x240)
@@ -406,6 +415,12 @@ class MotoDisplay:
         lcd.setTextColor(GRAY, BLACK)
         lcd.drawString("Aktualis GPS pozicio:", 10, y_div2 + 4)
 
+        # Szerver pálya gomb az alján
+        lcd.drawLine(0, 218, 320, 218, DARK_GRAY)
+        lcd.setTextSize(1)
+        lcd.setTextColor(CYAN, BLACK)
+        lcd.drawString("[ LE ] Szerver palya valasztas", 55, 225)
+
         self._update_setup_coords(gps, wifi, battery_pct)
         self._force_redraw = False
 
@@ -422,6 +437,82 @@ class MotoDisplay:
         else:
             lcd.setTextColor(RED, BLACK)
             lcd.drawString("GPS: NO FIX", 80, 151)
+
+    # ------------------------------------------------------------------
+    # MODE_TRACK_SELECT
+    # ------------------------------------------------------------------
+
+    def _draw_track_select(self, wifi=False, battery_pct=None):
+        if not self._force_redraw:
+            return
+        lcd = self._lcd
+        lcd.fillScreen(BLACK)
+        self._draw_status_bar('--', wifi, battery_pct)
+
+        lcd.setTextSize(2)
+        lcd.setTextColor(CYAN, BLACK)
+        lcd.drawString("SZERVER PALYA", 55, 22)
+        lcd.drawLine(0, 44, 320, 44, DARK_GRAY)
+
+        if self.track_list_status == 'loading':
+            lcd.setTextSize(2)
+            lcd.setTextColor(YELLOW, BLACK)
+            lcd.drawString("Letoltes...", 90, 95)
+
+        elif self.track_list_status == 'error':
+            lcd.setTextSize(1)
+            lcd.setTextColor(RED, BLACK)
+            lcd.drawString("Hiba! Ellenorizd:", 80, 85)
+            lcd.drawString("WiFi csatlakozast", 70, 105)
+            lcd.drawString("es BACKEND_URL-t", 75, 120)
+
+        elif not self.track_list:
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Nincsenek palya adatok", 60, 105)
+
+        else:
+            n   = len(self.track_list)
+            idx = self.track_sel_idx % n
+            t   = self.track_list[idx]
+
+            name = t.get('name', '?')
+            if len(name) > 20:
+                name = name[:18] + '..'
+            lcd.setTextSize(2)
+            lcd.setTextColor(WHITE, BLACK)
+            lcd.drawString(name, 10, 55)
+
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            length  = t.get('length_m')
+            sects   = t.get('sectors_count', 0)
+            ttype   = t.get('track_type', '?')
+            country = t.get('country', '')
+            detail  = '{}  {}m  {} szek.  {}'.format(
+                ttype,
+                int(length) if length else '?',
+                sects,
+                country,
+            )
+            lcd.drawString(detail, 10, 83)
+
+            lcd.setTextColor(ORANGE, BLACK)
+            idx_str = '[{}/{}]'.format(idx + 1, n)
+            lcd.drawString(idx_str, 140, 100)
+
+        lcd.drawLine(0, 122, 320, 122, DARK_GRAY)
+        lcd.setTextSize(1)
+        lcd.setTextColor(YELLOW, BLACK)
+        lcd.drawString("< BAL: elozo", 8, 132)
+        lcd.drawString("JOBB: kovetkezo >", 168, 132)
+        lcd.drawLine(0, 150, 320, 150, DARK_GRAY)
+        lcd.setTextColor(GREEN, BLACK)
+        lcd.drawString("hosszan: betolt + aktival", 45, 158)
+        lcd.setTextColor(GRAY, BLACK)
+        lcd.drawString("rovid: vissza SETUP-ba", 60, 175)
+
+        self._force_redraw = False
 
     # ------------------------------------------------------------------
     # MODE_STATS
