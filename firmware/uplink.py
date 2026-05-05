@@ -98,11 +98,13 @@ class Uplink:
     def flush_pending_from_logger(self, logger):
         """
         A logger.py-ban várakozó (nem feltöltött) session fájlokat feltölti.
+        Az aktív session fájlját kihagyja — azt körönként _try_immediate_uplink kezeli.
         Sikeres feltöltés után törli a fájlt.
 
         Returns: feltöltött fájlok száma
         """
-        pending = logger.get_pending_files()
+        pending = [p for p in logger.get_pending_files()
+                   if p != logger._session_path]   # aktív session kihagyása
         if not pending:
             return 0
 
