@@ -107,6 +107,37 @@ def delete_track(track_id: int, db: Session = Depends(get_db)):
 
 
 # ============================================================
+# GET /tracks/{id}/firmware-json  — board-kompatibilis track.json letöltés
+# ============================================================
+
+@router.get("/{track_id}/firmware-json")
+def get_firmware_json(track_id: int, db: Session = Depends(get_db)):
+    import json as _json
+    from fastapi.responses import Response as _Response
+
+    track = db.get(Track, track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="Pálya nem található")
+
+    data: dict = {
+        "name":       track.name,
+        "track_type": track.track_type,
+        "finish_line": track.finish_line,
+    }
+    if track.start_line:
+        data["start_line"] = track.start_line
+    data["sectors"] = track.sectors or []
+
+    content = _json.dumps(data, indent=2, ensure_ascii=False)
+    safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in track.name).strip("_") or "track"
+    return _Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{safe}_track.json"'},
+    )
+
+
+# ============================================================
 # GET /tracks/{id}/curvature  — görbületi profil
 # ============================================================
 

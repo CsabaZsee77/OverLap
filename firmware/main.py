@@ -297,8 +297,14 @@ async def gps_task():
             if sec_result is not None:
                 _on_sector_complete(sec_result)
 
-            # ── Köridő update ────────────────────────────────
-            lap_result = lap_det.update(lat, lon, ts, speed)
+            # ── Köridő update (IMU adatokkal együtt) ─────────
+            lean_ok = lean and lean.is_ready
+            lap_result = lap_det.update(
+                lat, lon, ts, speed,
+                lean_angle = lean.angle      if lean_ok else None,
+                lat_g      = lean.lateral_g  if lean_ok else None,
+                lon_g      = getattr(lean, 'lon_g', None) if lean_ok else None,
+            )
 
             if lap_result is not None:
                 prev_lap_ms = lap_result.lap_time_ms
@@ -469,6 +475,7 @@ async def display_task():
             prev_lap_max_kmh  = prev_lap_max_kmh,
             lap_history       = lap_history,
             lean              = lean,
+            track_name        = track_cfg.name if track_cfg else None,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
 

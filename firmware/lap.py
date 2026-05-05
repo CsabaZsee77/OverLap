@@ -134,19 +134,28 @@ class LapDetector:
     # Fő update ciklus
     # ------------------------------------------------------------------
 
-    def update(self, lat, lon, ts_ms, speed_kmh=0.0):
+    def update(self, lat, lon, ts_ms, speed_kmh=0.0,
+               lean_angle=None, lat_g=None, lon_g=None):
         """
         GPS pont feldolgozása.
 
         Args:
-            lat, lon   : szűrt GPS pozíció (fok)
-            ts_ms      : ticks_ms időbélyeg
-            speed_kmh  : aktuális sebesség (trace-hez)
+            lat, lon    : szűrt GPS pozíció (fok)
+            ts_ms       : ticks_ms időbélyeg
+            speed_kmh   : aktuális sebesség (trace-hez)
+            lean_angle  : dőlésszög fokban (IMU)
+            lat_g       : lateral G (IMU)
+            lon_g       : longitudinal G (IMU)
 
         Returns:
             LapResult ha kör / szakasz zárult, egyébként None.
         """
-        self.current_trace.append((lat, lon, speed_kmh, ts_ms))
+        pt = {'lat': lat, 'lon': lon, 'speed_kmh': round(speed_kmh, 1), 'ts_ms': ts_ms}
+        if lean_angle is not None:
+            pt['lean']  = round(lean_angle, 1)
+            pt['lat_g'] = round(lat_g, 3) if lat_g is not None else None
+            pt['lon_g'] = round(lon_g, 3) if lon_g is not None else None
+        self.current_trace.append(pt)
 
         if self.state == STATE_NO_LINE or self._prev_lat is None:
             self._update_prev(lat, lon, ts_ms)

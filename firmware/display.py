@@ -121,13 +121,13 @@ class MotoDisplay:
     def update(self, gps, lap_detector, max_speed_kmh=0.0,
                wifi_connected=False, predicted_ms=None, prev_lap_ms=None,
                battery_pct=None, lap_start_ts=None, prev_lap_max_kmh=None,
-               lap_history=None, lean=None):
+               lap_history=None, lean=None, track_name=None):
         if self._mode == MODE_MAIN:
             self._draw_main(gps, lap_detector, max_speed_kmh,
                             wifi_connected, predicted_ms, prev_lap_ms,
                             battery_pct, lap_start_ts, lap_history=lap_history)
         elif self._mode == MODE_SETUP:
-            self._draw_setup(gps, wifi_connected, battery_pct)
+            self._draw_setup(gps, wifi_connected, battery_pct, track_name=track_name)
         elif self._mode == MODE_STATS:
             self._draw_stats(gps, lap_detector, max_speed_kmh, wifi_connected, battery_pct)
         elif self._mode == MODE_DIAG:
@@ -358,7 +358,7 @@ class MotoDisplay:
     # MODE_SETUP
     # ------------------------------------------------------------------
 
-    def _draw_setup(self, gps, wifi=False, battery_pct=None):
+    def _draw_setup(self, gps, wifi=False, battery_pct=None, track_name=None):
         if not self._force_redraw:
             self._update_setup_coords(gps, wifi, battery_pct)
             return
@@ -372,26 +372,37 @@ class MotoDisplay:
         lcd.setTextColor(CYAN, BLACK)
         lcd.drawString("RAJTVONAL FELVETEL", 10, 22)
 
-        lcd.drawLine(0, 44, 320, 44, DARK_GRAY)
-        lcd.drawLine(160, 44, 160, 112, DARK_GRAY)
+        # Betöltött pálya neve (ha van)
+        if track_name:
+            lcd.setTextSize(1)
+            lcd.setTextColor(ORANGE, BLACK)
+            # max ~40 karakter, rövidítés ha kell
+            tn = track_name if len(track_name) <= 30 else track_name[:28] + ".."
+            lcd.drawString("Palya: " + tn, 8, 45)
 
+        y_start = 54 if track_name else 44
+        lcd.drawLine(0, y_start, 320, y_start, DARK_GRAY)
+        lcd.drawLine(160, y_start, 160, y_start + 68, DARK_GRAY)
+
+        y1 = y_start + 8
         lcd.setTextSize(1)
         lcd.setTextColor(YELLOW, BLACK)
-        lcd.drawString("[ BAL ] GPS 20m", 8, 52)
+        lcd.drawString("[ BAL ] GPS 20m", 8, y1)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("Hajts el mellette,", 8, 68)
-        lcd.drawString("tartsd 2mp-ig", 8, 80)
+        lcd.drawString("Hajts el mellette,", 8, y1 + 14)
+        lcd.drawString("tartsd 2mp-ig", 8, y1 + 26)
 
         lcd.setTextColor(GREEN, BLACK)
-        lcd.drawString("[ JOBB ] Fajlbol", 168, 52)
+        lcd.drawString("[ JOBB ] Fajlbol", 168, y1)
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("track.json erintsd", 168, 68)
-        lcd.drawString("(SD vagy flash)", 168, 80)
+        lcd.drawString("track.json erintsd", 168, y1 + 14)
+        lcd.drawString("(SD vagy flash)", 168, y1 + 26)
 
-        lcd.drawLine(0, 112, 320, 112, DARK_GRAY)
+        y_div2 = y_start + 58
+        lcd.drawLine(0, y_div2, 320, y_div2, DARK_GRAY)
 
         lcd.setTextColor(GRAY, BLACK)
-        lcd.drawString("Aktualis GPS pozicio:", 10, 118)
+        lcd.drawString("Aktualis GPS pozicio:", 10, y_div2 + 4)
 
         self._update_setup_coords(gps, wifi, battery_pct)
         self._force_redraw = False
@@ -399,16 +410,16 @@ class MotoDisplay:
     def _update_setup_coords(self, gps, wifi=False, battery_pct=None):
         lcd = self._lcd
         self._draw_status_bar(gps.get_status_str(), wifi, battery_pct)
-        lcd.fillRect(0, 130, 320, 80, BLACK)
+        lcd.fillRect(0, 125, 320, 95, BLACK)
         lcd.setTextSize(2)
         if gps.is_valid():
             lcd.setTextColor(GREEN, BLACK)
-            lcd.drawString("LAT: {:.6f}".format(gps.lat), 10, 135)
-            lcd.drawString("LON: {:.6f}".format(gps.lon), 10, 158)
-            lcd.drawString("SAT: {}".format(gps.sats), 10, 181)
+            lcd.drawString("LAT: {:.6f}".format(gps.lat), 10, 128)
+            lcd.drawString("LON: {:.6f}".format(gps.lon), 10, 151)
+            lcd.drawString("SAT: {}".format(gps.sats), 10, 174)
         else:
             lcd.setTextColor(RED, BLACK)
-            lcd.drawString("GPS: NO FIX", 80, 158)
+            lcd.drawString("GPS: NO FIX", 80, 151)
 
     # ------------------------------------------------------------------
     # MODE_STATS
