@@ -188,7 +188,8 @@ export default function TrackEditorPage() {
   const navigate = useNavigate()
 
   // ── Form állapot ──────────────────────────────────────────────────────────
-  const [name,       setName]       = useState('')
+  const [name,           setName]       = useState('')
+  const [nameHadAccent,  setNameHadAccent] = useState(false)
   const [country,    setCountry]    = useState('HU')
   const [trackType,  setTrackType]  = useState<TrackType>('circuit')
   const [centerline, setCenterline] = useState<CenterlinePoint[]>([])
@@ -231,7 +232,9 @@ export default function TrackEditorPage() {
   useEffect(() => {
     if (!isEdit || !trackId) return
     getTrack(trackId).then(t => {
-      setName(t.name)
+      const stripped = t.name.replace(/[^\x00-\x7F]/g, '')
+      setNameHadAccent(stripped !== t.name)
+      setName(stripped)
       setCountry(t.country ?? 'HU')
       setTrackType(t.track_type)
       setCenterline(t.centerline)
@@ -470,6 +473,7 @@ export default function TrackEditorPage() {
   // ── Mentés ────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!name.trim())        { alert('Adj meg pályanevet'); return }
+    if (/[^\x00-\x7F]/.test(name)) { alert('A pályanév csak ASCII karaktereket tartalmazhat (ékezetek nem megengedettek)'); return }
     if (!finishLine)         { alert('Rajzold meg a célvonalat'); return }
     if (trackType === 'stage' && !startLine) { alert('Stage módhoz startvonal is kell'); return }
     if (centerline.length < 2) { alert('Rajzolj legalább 2 centerline pontot'); return }
@@ -537,9 +541,18 @@ export default function TrackEditorPage() {
           <section>
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Alap adatok</p>
             <div className="space-y-2">
-              <input value={name} onChange={e => setName(e.target.value)}
-                placeholder="Pálya neve"
-                className="w-full bg-[#1a1d26] border border-gray-700 rounded px-2.5 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500" />
+              <input value={name}
+                onChange={e => {
+                  const raw = e.target.value
+                  const stripped = raw.replace(/[^\x00-\x7F]/g, '')
+                  setNameHadAccent(stripped !== raw)
+                  setName(stripped)
+                }}
+                placeholder="Palya neve (ASCII only)"
+                className={`w-full bg-[#1a1d26] border rounded px-2.5 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500 ${nameHadAccent ? 'border-yellow-500' : 'border-gray-700'}`} />
+              {nameHadAccent && (
+                <p className="text-xs text-yellow-500 -mt-1">Ékezetes karakterek eltávolítva (board nem támogatja)</p>
+              )}
               <div className="flex gap-2">
                 <input value={country} onChange={e => setCountry(e.target.value.toUpperCase())}
                   maxLength={3} placeholder="HU"
