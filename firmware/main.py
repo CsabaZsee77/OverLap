@@ -620,6 +620,11 @@ def _send_session_to_telegram():
         print("Telegram: nincs beallitva, kuldés kihagyva")
         _beep(400, 300)
         return
+    if not wifi_connected:
+        print("Telegram: nincs WiFi")
+        _beep(400, 300)
+        _beep(400, 300)
+        return
 
     # Szöveges összefoglaló in-memory adatokból (nem igényel fájlolvasást,
     # ezért sosem bukik el MemoryError-on)
@@ -847,6 +852,8 @@ async def touch_task():
                         _beep(1000, 200)
                         disp._force_redraw = True
                     elif disp._mode == 2:   # MODE_STATS — session küldése Telegram-ra
+                        _beep(800, 80)          # azonnali visszajelzés: long press OK
+                        disp.flash_screen(0x001133, 300)
                         try:
                             _send_session_to_telegram()
                         except Exception as _e:
