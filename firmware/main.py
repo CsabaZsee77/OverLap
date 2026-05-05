@@ -163,14 +163,14 @@ connect_wifi()
 # ============================================================
 # PÁLYA SZINKRONIZÁCIÓ (szerver → /flash/track.json)
 # ============================================================
-if config.ACTIVE_TRACK_ID and config.BACKEND_URL:
+if getattr(config, 'ACTIVE_TRACK_ID', None) and getattr(config, 'BACKEND_URL', ''):
     _wlan = network.WLAN(network.STA_IF)
     if not _wlan.isconnected():
         print("TrackSync: várakozás WiFi-re (max 10s)...")
         track_sync_wait(_wlan, timeout_ms=10000)
     if _wlan.isconnected():
         try:
-            track_sync(config.BACKEND_URL, config.ACTIVE_TRACK_ID)
+            track_sync(config.BACKEND_URL, getattr(config, 'ACTIVE_TRACK_ID', None))
         except Exception as _e:
             print("TrackSync: hiba —", _e)
     else:
