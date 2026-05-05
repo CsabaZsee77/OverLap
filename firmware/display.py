@@ -462,14 +462,29 @@ class MotoDisplay:
             lcd.setTextColor(GRAY, BLACK)
             lcd.drawString("palya adatok letoltese", 65, 118)
 
+        elif self.track_list_status == 'no_cache':
+            lcd.setTextSize(1)
+            lcd.setTextColor(GRAY, BLACK)
+            lcd.drawString("Meg nincsenek letoltott palya adatok.", 8, 70)
+            lcd.drawString("Eloszor toltsd le a szerverrol:", 20, 86)
+            lcd.setTextColor(CYAN, BLACK)
+            lcd.drawString("BAL hosszan = letoltes szerverrol", 12, 106)
+            lcd.setTextColor(DARK_GRAY, BLACK)
+            lcd.drawString("(WiFi szukseges)", 85, 120)
+
         elif self.track_list_status == 'error':
             lcd.setTextSize(1)
             lcd.setTextColor(RED, BLACK)
-            lcd.drawString("Szinkron sikertelen!", 70, 80)
+            lcd.drawString("Szinkron sikertelen!", 70, 68)
             lcd.setTextColor(GRAY, BLACK)
-            lcd.drawString("Ellenorizd a WiFi-t", 65, 100)
-            lcd.drawString("es a BACKEND_URL-t", 68, 116)
+            lcd.drawString("Ellenorizd:", 75, 84)
             lcd.setTextColor(YELLOW, BLACK)
+            lcd.drawString("1. WiFi csatlakozva? (zold = igen)", 8, 98)
+            lcd.drawString("2. Szerver elerheto?", 8, 112)
+            if hasattr(self, '_last_backend'):
+                lcd.setTextColor(DARK_GRAY, BLACK)
+                lcd.drawString(self._last_backend[:38], 8, 124)
+            lcd.setTextColor(CYAN, BLACK)
             lcd.drawString("Ujra: BAL hosszan", 75, 140)
 
         elif not self.track_list:

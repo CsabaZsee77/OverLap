@@ -327,7 +327,7 @@ def _enter_track_select():
         disp.track_list        = cached
         disp.track_list_status = 'ok'
     else:
-        disp.track_list_status = 'error'   # nincs cache → BAL hosszan = szinkronizálás
+        disp.track_list_status = 'no_cache'   # még soha nem volt szinkron
 
     disp._force_redraw = True
 
@@ -378,6 +378,7 @@ def _sync_tracks_from_server():
         disp.track_list_status = 'error'
         disp._force_redraw     = True
         return
+    disp._last_backend     = backend
     disp.track_list_status = 'syncing'
     disp._force_redraw     = True
     n = track_sync_all(backend)
