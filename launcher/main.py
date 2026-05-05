@@ -79,12 +79,14 @@ last_timeout_shown = -1
 # OTA FRISSÍTÉS
 # ============================================================
 
-def run_ota():
-    """OTA frissítés futtatása — WiFi csatlakozás + letöltés + reboot ha volt."""
+def run_ota(force=False):
+    """OTA frissítés futtatása — WiFi csatlakozás + letöltés + reboot ha volt.
+    force=True: state törlés → minden fájl újra letöltve."""
     M5.Lcd.fillScreen(BLACK)
     M5.Lcd.setTextSize(2)
     M5.Lcd.setTextColor(CYAN, BLACK)
-    M5.Lcd.drawString("OTA Frissites", 55, 40)
+    title = "FORCE Update" if force else "OTA Frissites"
+    M5.Lcd.drawString(title, 55, 40)
     M5.Lcd.drawLine(0, 65, 320, 65, DARK_GRAY)
 
     def status(line1, line2='', color=WHITE):
@@ -150,6 +152,14 @@ def run_ota():
         return
 
     ota = OTAUpdater(repos)
+    if force:
+        status('Force update...', 'State torles, minden fajl ujra letolt')
+        import os
+        try:
+            os.remove('/flash/ota_state.json')
+        except Exception:
+            pass
+        ota._state = {}
     updated = ota.check_and_update()
 
     if updated:
@@ -438,12 +448,28 @@ while running:
                 x = M5.Touch.getX()
                 y = M5.Touch.getY()
                 last_touch_time = now
+                touch_start = time.ticks_ms()
+                is_update_btn = x < 115 and y > 205
+                force_shown = False
 
                 while M5.Touch.getCount() > 0:
                     M5.update()
                     time.sleep_ms(30)
+                    if is_update_btn and not force_shown:
+                        held = time.ticks_diff(time.ticks_ms(), touch_start)
+                        if held >= 2000:
+                            force_shown = True
+                            M5.Lcd.fillRoundRect(5, 210, 105, 28, 5, ORANGE)
+                            M5.Lcd.setTextColor(BLACK, ORANGE)
+                            M5.Lcd.setTextSize(2)
+                            M5.Lcd.drawString("FORCE! ", 14, 214)
 
-                handle_touch(x, y)
+                held_ms = time.ticks_diff(time.ticks_ms(), touch_start)
+                if is_update_btn and held_ms >= 2000:
+                    run_ota(force=True)
+                    need_redraw = True
+                else:
+                    handle_touch(x, y)
 
         time.sleep_ms(30)
 

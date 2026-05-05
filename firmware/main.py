@@ -694,7 +694,7 @@ async def touch_task():
                         lean.reset_peaks()
                         _beep(1000, 200)
                         disp._force_redraw = True
-                    elif disp._mode == MODE_STATS:   # STATS hosszú = session küldése Telegram-ra
+                    elif disp._mode == 2:   # MODE_STATS — session küldése Telegram-ra
                         _send_session_to_telegram()
         else:
             if held_since is not None and not action_taken:
