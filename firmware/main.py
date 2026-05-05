@@ -615,27 +615,62 @@ def _flush_telegram_queue():
 
 
 def _send_session_to_telegram():
-    """Aktuális session JSON fájl elküldése Telegram-ra dokumentumként."""
+    """Session összefoglaló + opcionálisan a JSON fájl elküldése Telegram-ra."""
     if not telegram.is_enabled():
         print("Telegram: nincs beallitva, kuldés kihagyva")
         _beep(400, 300)
         return
-    path = logger._session_path
-    if not path:
-        print("Telegram: nincs session fajl")
-        _beep(400, 300)
-        return
-    laps = lap_det.get_lap_count()
-    best = lap_det.get_best_lap_ms()
+
+    # Szöveges összefoglaló in-memory adatokból (nem igényel fájlolvasást,
+    # ezért sosem bukik el MemoryError-on)
+    laps     = lap_det.get_lap_count()
+    best     = lap_det.get_best_lap_ms()
     best_str = '{:.3f}s'.format(best / 1000.0) if best else '---'
-    caption = 'OverLAP session: {} kor, best {}'.format(laps, best_str)
-    print("Telegram: session fajl kuldese ({})".format(path))
-    ok = telegram.send_document(path, caption)
+    tname    = track_cfg.name if track_cfg else ''
+
+    lines = []
+    lines.append('OverLAP Session' + (' — ' + tname if tname else ''))
+    lines.append('')
+    lines.append('{} teljesitett kor, legjobb: {}'.format(laps, best_str))
+
+    if lap_history:
+        lines.append('')
+        for lh in lap_history:
+            mins = lh['lap_time_ms'] // 60000
+            secs = (lh['lap_time_ms'] % 60000) / 1000.0
+            star = ' BEST' if lh.get('is_best') else ''
+            lines.append('  Kor #{}: {:d}:{:06.3f}{}'.format(
+                lh['lap_number'], mins, secs, star))
+
+    if session_peak_lean_right or session_peak_lean_left:
+        lines.append('')
+        lines.append('Max doles: Bal {:.0f}  Jobb {:.0f}'.format(
+            session_peak_lean_left, session_peak_lean_right))
+
+    if session_peak_kamm_g > 0.05:
+        lines.append('Max Kamm G: {:.2f}G'.format(session_peak_kamm_g))
+
+    print("Telegram: session summary kuldese")
+    ok = telegram.send_text('\n'.join(lines))
+
     if ok:
+        # Ha a fájl kicsi (<= 40 KB), küldjük dokumentumként is
+        path = logger._session_path
+        if path:
+            try:
+                fsize = os.stat(path)[6]
+                if fsize <= 40960:
+                    print("Telegram: doc kuldese ({} byte)".format(fsize))
+                    telegram.send_document(path, tname)
+                else:
+                    print("Telegram: doc tul nagy ({} byte), kihagyva".format(fsize))
+            except Exception as _e:
+                print("Telegram: doc hiba ->", _e)
         _beep(1200, 150)
         time.sleep_ms(160)
         _beep(1600, 200)
     else:
+        print("Telegram: kuldesi hiba")
         _beep(400, 500)
 
 
@@ -812,7 +847,11 @@ async def touch_task():
                         _beep(1000, 200)
                         disp._force_redraw = True
                     elif disp._mode == 2:   # MODE_STATS — session küldése Telegram-ra
-                        _send_session_to_telegram()
+                        try:
+                            _send_session_to_telegram()
+                        except Exception as _e:
+                            print("Telegram hiba:", _e)
+                            _beep(400, 500)
         else:
             if held_since is not None and not action_taken:
                 held_ms = time.ticks_diff(time.ticks_ms(), held_since)
