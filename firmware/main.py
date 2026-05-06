@@ -216,11 +216,7 @@ def _start_session():
 # ============================================================
 
 def _beep(freq=1000, duration=200):
-    try:
-        M5.Speaker.setVolume(80)
-        M5.Speaker.tone(freq, duration)
-    except Exception:
-        pass
+    pass  # Speaker tone disabled — blocking issue on CoreS3
 
 def set_finish_line_from_gps():
     global track_cfg, lap_start_ts
