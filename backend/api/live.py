@@ -25,14 +25,17 @@ class LivePoint(BaseModel):
 
 
 class LivePush(BaseModel):
-    device_id:  str
-    points:     list[LivePoint]
-    lap_number: int | None = None
+    device_id:      str
+    points:         list[LivePoint]
+    lap_number:     int | None = None
+    lap_elapsed_ms: int | None = None
 
 
 @router.post("/{device_id}", include_in_schema=True)
 def push_live(device_id: str, payload: LivePush):
-    s = _state.setdefault(device_id, {"points": [], "lap_number": None, "updated_at": 0.0})
+    s = _state.setdefault(device_id, {
+        "points": [], "lap_number": None, "lap_elapsed_ms": None, "updated_at": 0.0,
+    })
 
     # Új kör → töröljük a régi trace-t
     if payload.lap_number is not None and payload.lap_number != s["lap_number"]:
@@ -43,7 +46,8 @@ def push_live(device_id: str, payload: LivePush):
     s["points"].extend(new_pts)
     if len(s["points"]) > MAX_POINTS:
         s["points"] = s["points"][-MAX_POINTS:]
-    s["updated_at"] = time.time()
+    s["updated_at"]     = time.time()
+    s["lap_elapsed_ms"] = payload.lap_elapsed_ms
 
     return {"ok": True, "count": len(s["points"])}
 

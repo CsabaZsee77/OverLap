@@ -20,6 +20,7 @@ import time
 import os
 import network
 import math
+import json
 
 print("=" * 40)
 print("MOTOMETER v0.1 - Starting...")
@@ -785,16 +786,23 @@ async def live_task():
             continue
         if not _live_buf:
             continue
-        to_send  = _live_buf[:20]   # max 20 pont / küldés
+        to_send   = _live_buf[:20]   # max 20 pont / küldés
         _live_buf = _live_buf[20:]
+
+        # Aktuális kör infó
+        current_lap = lap_det.get_lap_count() + 1 if lap_start_ts is not None else None
+        elapsed_ms  = time.ticks_diff(time.ticks_ms(), lap_start_ts) if lap_start_ts is not None else None
+
         try:
             try:
                 import urequests as _http
             except ImportError:
                 import requests as _http
             body = json.dumps({
-                'device_id': config.DEVICE_ID,
-                'points':    to_send,
+                'device_id':      config.DEVICE_ID,
+                'points':         to_send,
+                'lap_number':     current_lap,
+                'lap_elapsed_ms': elapsed_ms,
             })
             resp = _http.post(
                 config.BACKEND_URL.rstrip('/') + '/api/live/' + config.DEVICE_ID,
