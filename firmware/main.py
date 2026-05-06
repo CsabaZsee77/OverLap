@@ -155,10 +155,6 @@ def connect_wifi():
         if not wlan.isconnected():
             print("WiFi: csatlakozás '{}'...".format(config.WIFI_SSID))
             wlan.connect(config.WIFI_SSID, config.WIFI_PASS)
-            for _ in range(20):
-                if wlan.isconnected():
-                    break
-                time.sleep(0.5)
         wifi_connected = wlan.isconnected()
         if wifi_connected:
             print("WiFi: OK —", wlan.ifconfig()[0])
@@ -759,6 +755,7 @@ async def display_task():
 async def wifi_task():
     """WiFi újracsatlakozás — hotspot kiesés kezelése"""
     global wifi_connected
+    retry_count = 0
     while True:
         try:
             wlan = network.WLAN(network.STA_IF)
@@ -771,12 +768,19 @@ async def wifi_task():
                 wifi_connected = wlan.isconnected()
                 if wifi_connected:
                     print("WiFi: reconnect OK —", wlan.ifconfig()[0])
+                    retry_count = 0
                     _flush_telegram_queue()   # pufferelt körök elküldése
+                else:
+                    retry_count += 1
+            else:
+                retry_count = 0
 
         except Exception as e:
             print("WiFi task hiba:", e)
 
-        await asyncio.sleep_ms(config.WIFI_RETRY_INTERVAL_S * 1000)
+        # első 5 próbálkozásnál 10s, utána a config szerinti intervallum
+        interval = 10000 if retry_count < 5 else config.WIFI_RETRY_INTERVAL_S * 1000
+        await asyncio.sleep_ms(interval)
 
 
 async def live_task():
