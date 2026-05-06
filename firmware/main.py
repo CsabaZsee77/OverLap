@@ -589,11 +589,7 @@ def _on_lap_complete(result, ts):
         'peak_kamm_angle': this_kamm_angle,
     })
 
-    # Ha van WiFi, azonnal kiküldjük a teljes sort
-    if wifi_connected:
-        if config.BACKEND_URL:
-            _try_immediate_uplink(result)
-        _flush_telegram_queue()
+    # A feltöltést az uplink_task végzi aszinkron — itt nem blokkolunk
 
     # Reset lap start
     lap_start_ts = result.cross_ts_ms
@@ -825,25 +821,36 @@ async def live_task():
 
 async def uplink_task():
     """
-    Offline sor kiürítése — 30 s-onként, ha van WiFi.
-    Telegram queue retry + session feltöltés.
+    Session feltöltés + Telegram küldés — 10 s-onként, ha van WiFi.
+    Körátlépéskor nem blokkolunk a gps_task-ban, itt dolgozzuk fel.
     """
     while True:
-        await asyncio.sleep_ms(30_000)   # 30 s
+        await asyncio.sleep_ms(10_000)   # 10 s
 
         if not wifi_connected:
             continue
 
-        # Telegram puffer retry (blokkoló, de 30s-onként elfogadható)
+        # Aktív session feltöltése
+        try:
+            if logger._session_data and config.BACKEND_URL:
+                ok = uplink.upload_session(logger._session_data)
+                if ok:
+                    logger.mark_session_uploaded()
+        except Exception as e:
+            print("Uplink session hiba:", e)
+
+        await asyncio.sleep_ms(0)
+
+        # Telegram puffer
         try:
             if telegram_queue:
-                print("Uplink: Telegram retry ({} sor)".format(len(telegram_queue)))
                 _flush_telegram_queue()
         except Exception as e:
-            print("Telegram retry hiba:", e)
+            print("Telegram hiba:", e)
 
-        await asyncio.sleep_ms(0)   # event loop légzési lehetőség
+        await asyncio.sleep_ms(0)
 
+        # Offline (befejezett) sessionök
         try:
             n = uplink.flush_pending_from_logger(logger)
             if n:
