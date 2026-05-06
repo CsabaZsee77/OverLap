@@ -128,9 +128,7 @@ class SessionLogger:
             'peak_kamm_angle':  round(peak_kamm_angle, 1) if peak_kamm_angle else None,
         }
         self._session_data['laps'].append(lap)
-        self._flush()
-        print("Logger: kör #{} mentve ({} trace pont)".format(
-            lap_number, len(trace_dicts)))
+        print("Logger: kör #{} mentve".format(lap_number))
 
     def close_session(self):
         """Session lezárása — utolsó flush."""

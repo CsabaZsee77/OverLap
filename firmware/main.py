@@ -559,14 +559,13 @@ def _on_lap_complete(result, ts):
     if len(lap_history) > 10:
         lap_history.pop(0)
 
-    # Mentés loggerbe
+    # Mentés loggerbe (GPS trace nélkül — a live_task real-time küldi)
     logger.add_lap(
         lap_number      = result.lap_number,
         lap_time_ms     = result.lap_time_ms,
         lap_start_ts    = lap_start_ts,
         lap_end_ts      = result.cross_ts_ms,
         sector_times_ms = sector_times_ms,
-        gps_trace       = result.trace,
         max_speed_kmh   = this_lap_max,
         max_lean_right  = this_lean_right,
         max_lean_left   = this_lean_left,
@@ -830,7 +829,11 @@ async def uplink_task():
         if not wifi_connected:
             continue
 
-        # Aktív session feltöltése (1 próbálkozás — 10s-onként retry)
+        # Aktív session flush fájlba + feltöltés (1 próbálkozás — 10s-onként retry)
+        try:
+            logger._flush()
+        except Exception as e:
+            print("Logger flush hiba:", e)
         try:
             if wifi_connected and logger._session_data and config.BACKEND_URL:
                 ok = uplink.upload_session(logger._session_data, max_retries=1)
