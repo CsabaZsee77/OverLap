@@ -139,6 +139,6 @@ OTA_REPOS = [
         'token':  '',  # GitHub Personal Access Token — csak a device-on töltsd ki, ne commitold!
         'subdir': 'firmware',
         'target': '/flash/overlap/',
-        'skip':   ['config.py', 'ota.py', 'boot.py', 'track.json'],
+        'skip':   ['config.py', 'ota.py', 'track.json'],
     },
 ]
