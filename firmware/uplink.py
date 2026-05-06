@@ -42,24 +42,23 @@ class Uplink:
     # Session feltöltés
     # ------------------------------------------------------------------
 
-    def upload_session(self, session_dict):
+    def upload_session(self, session_dict, max_retries=None):
         """
         Egy session feltöltése a backendbe.
 
-        session_dict: logger.py által mentett dict (vagy in-memory sor)
+        max_retries=1 ajánlott async taskból — a task úgyis retry-ol.
         Returns: True ha sikeres, False ha minden próbálkozás meghiúsult.
         """
         if not self._url:
             print("Uplink: nincs backend URL — feltöltés kihagyva")
             return False
 
-        # _uploaded és _ts belső mezőket kiszűrjük
-        payload = _strip_internal(session_dict)
-
+        retries = max_retries if max_retries is not None else MAX_RETRIES
+        payload  = _strip_internal(session_dict)
         endpoint = self._url + '/api/sessions/upload'
         body     = json.dumps(payload)
 
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(retries):
             try:
                 try:
                     import urequests as _http
@@ -82,9 +81,10 @@ class Uplink:
 
             except Exception as e:
                 print("Uplink: hálózati hiba ({}) →".format(attempt + 1), e)
+                return False   # WiFi kiesés — ne várjunk, task retry-ol
 
-            if attempt < MAX_RETRIES - 1:
-                wait = RETRY_DELAY_S[attempt]
+            if attempt < retries - 1:
+                wait = RETRY_DELAY_S[min(attempt, len(RETRY_DELAY_S) - 1)]
                 print("Uplink: {}s várakozás...".format(wait))
                 time.sleep(wait)
 

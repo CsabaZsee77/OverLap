@@ -830,10 +830,10 @@ async def uplink_task():
         if not wifi_connected:
             continue
 
-        # Aktív session feltöltése
+        # Aktív session feltöltése (1 próbálkozás — 10s-onként retry)
         try:
-            if logger._session_data and config.BACKEND_URL:
-                ok = uplink.upload_session(logger._session_data)
+            if wifi_connected and logger._session_data and config.BACKEND_URL:
+                ok = uplink.upload_session(logger._session_data, max_retries=1)
                 if ok:
                     logger.mark_session_uploaded()
         except Exception as e:
@@ -843,7 +843,7 @@ async def uplink_task():
 
         # Telegram puffer
         try:
-            if telegram_queue:
+            if wifi_connected and telegram_queue:
                 _flush_telegram_queue()
         except Exception as e:
             print("Telegram hiba:", e)
@@ -852,9 +852,10 @@ async def uplink_task():
 
         # Offline (befejezett) sessionök
         try:
-            n = uplink.flush_pending_from_logger(logger)
-            if n:
-                print("Uplink: {} offline session feltöltve".format(n))
+            if wifi_connected:
+                n = uplink.flush_pending_from_logger(logger)
+                if n:
+                    print("Uplink: {} offline session feltöltve".format(n))
         except Exception as e:
             print("Uplink task hiba:", e)
 
