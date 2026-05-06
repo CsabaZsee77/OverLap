@@ -164,21 +164,7 @@ def connect_wifi():
 
 connect_wifi()
 
-# ============================================================
-# PÁLYA SZINKRONIZÁCIÓ (szerver → /flash/track.json)
-# ============================================================
-if getattr(config, 'ACTIVE_TRACK_ID', None) and getattr(config, 'BACKEND_URL', ''):
-    _wlan = network.WLAN(network.STA_IF)
-    if not _wlan.isconnected():
-        print("TrackSync: várakozás WiFi-re (max 10s)...")
-        track_sync_wait(_wlan, timeout_ms=10000)
-    if _wlan.isconnected():
-        try:
-            track_sync(config.BACKEND_URL, getattr(config, 'ACTIVE_TRACK_ID', None))
-        except Exception as _e:
-            print("TrackSync: hiba —", _e)
-    else:
-        print("TrackSync: WiFi nem érhető el — lokális track.json marad")
+# PÁLYA SZINKRONIZÁCIÓ — wifi_task indulása után, aszinkron módon történik
 
 # ============================================================
 # PÁLYA KONFIGURÁCIÓ
@@ -477,10 +463,17 @@ async def gps_task():
                 _on_lap_complete(lap_result, ts)
 
             # ── Live buffer feltöltés ────────────────────────
-            if lap_det.current_trace:
-                pt = lap_det.current_trace[-1]
-                if isinstance(pt, dict) and len(_live_buf) < 40:
-                    _live_buf.append(pt)
+            if len(_live_buf) < 40:
+                lean_ok = lean and lean.is_ready
+                _live_buf.append({
+                    'lat':        lat,
+                    'lon':        lon,
+                    'speed_kmh':  round(speed, 1),
+                    'ts_ms':      ts,
+                    'lean_deg':   round(lean.angle, 1) if lean_ok else 0.0,
+                    'lat_g':      round(lean.lateral_g, 3) if lean_ok else 0.0,
+                    'lon_g':      round(getattr(lean, 'lon_g', 0.0), 3) if lean_ok else 0.0,
+                })
 
             # ── Kör indulás detektálása ──────────────────────
             # Ha STATE_WAITING → STATE_IN_LAP váltott, start_lap() kell
@@ -770,6 +763,11 @@ async def wifi_task():
                     print("WiFi: reconnect OK —", wlan.ifconfig()[0])
                     retry_count = 0
                     _flush_telegram_queue()   # pufferelt körök elküldése
+                    if getattr(config, 'ACTIVE_TRACK_ID', None) and getattr(config, 'BACKEND_URL', ''):
+                        try:
+                            track_sync(config.BACKEND_URL, config.ACTIVE_TRACK_ID)
+                        except Exception as _e:
+                            print("TrackSync: hiba —", _e)
                 else:
                     retry_count += 1
             else:
