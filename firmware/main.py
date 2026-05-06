@@ -573,22 +573,6 @@ def _on_lap_complete(result, ts):
         peak_kamm_angle = this_kamm_angle,
     )
 
-    # Telegram pufferbe tesszük (mindig)
-    telegram_queue.append({
-        'lap_number':      result.lap_number,
-        'lap_time_ms':     result.lap_time_ms,
-        'delta_ms':        result.delta_ms,
-        'is_best':         result.is_best,
-        'max_speed_kmh':   this_lap_max,
-        'sector_times_ms': sector_times_ms,
-        'track_name':      track_cfg.name if track_cfg else '',
-        'max_lean_right':  this_lean_right,
-        'max_lean_left':   this_lean_left,
-        'peak_kamm_g':     this_kamm_g,
-        'peak_kamm_angle': this_kamm_angle,
-    })
-
-    # A feltöltést az uplink_task végzi aszinkron — itt nem blokkolunk
 
     # Reset lap start
     lap_start_ts = result.cross_ts_ms
@@ -738,6 +722,16 @@ async def display_task():
             session_kamm_g       = session_peak_kamm_g,
         )
         await asyncio.sleep_ms(200)    # 5 Hz
+
+
+async def log_flush_task():
+    """Session adatok kiírása flash-re 30 másodpercenként."""
+    while True:
+        await asyncio.sleep_ms(30_000)
+        try:
+            logger._flush()
+        except Exception as e:
+            print("Log flush hiba:", e)
 
 
 async def wifi_task():
@@ -969,10 +963,8 @@ async def main():
         imu_task(),
         gps_task(),
         display_task(),
-        wifi_task(),
-        uplink_task(),
-        live_task(),
         touch_task(),
+        log_flush_task(),
     )
 
 print("MotoMeter READY")
