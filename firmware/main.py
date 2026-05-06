@@ -102,6 +102,7 @@ prev_lap_max_kmh  = 0.0   # előző befejezett kör max sebessége (kijelzőhöz
 prev_lap_ms       = None
 wifi_connected    = False
 battery_pct       = None
+_live_buf         = []    # valós idejű GPS buffer (live_task olvassa)
 track_cfg         = None
 session_started   = False
 lap_start_ts      = None
@@ -472,6 +473,12 @@ async def gps_task():
                 prev_lap_ms = lap_result.lap_time_ms
                 _on_lap_complete(lap_result, ts)
 
+            # ── Live buffer feltöltés ────────────────────────
+            if lap_det.current_trace:
+                pt = lap_det.current_trace[-1]
+                if isinstance(pt, dict) and len(_live_buf) < 40:
+                    _live_buf.append(pt)
+
             # ── Kör indulás detektálása ──────────────────────
             # Ha STATE_WAITING → STATE_IN_LAP váltott, start_lap() kell
             from overlap.lap import STATE_IN_LAP
@@ -563,7 +570,7 @@ def _on_lap_complete(result, ts):
         lap_start_ts    = lap_start_ts,
         lap_end_ts      = result.cross_ts_ms,
         sector_times_ms = sector_times_ms,
-        gps_trace       = list(lap_det.current_trace),
+        gps_trace       = result.trace,
         max_speed_kmh   = this_lap_max,
         max_lean_right  = this_lean_right,
         max_lean_left   = this_lean_left,
@@ -680,7 +687,8 @@ def _send_session_to_telegram():
 def _try_immediate_uplink(result):
     """
     Az aktuális session eddigi adatait feltölti.
-    Ha nem sikerül, a logger.py-ban marad — uplink_task veszi fel.
+    Siker esetén _uploaded=True flag kerül a session fájlba,
+    így bootkor a flush_pending nem küldi fel újra.
     """
     try:
         if not logger._session_data:
@@ -688,6 +696,7 @@ def _try_immediate_uplink(result):
         ok = uplink.upload_session(logger._session_data)
         if ok:
             print("Uplink: kör #{} feltöltve".format(result.lap_number))
+            logger.mark_session_uploaded()
     except Exception as e:
         print("Uplink: immediate hiba →", e)
 
@@ -761,6 +770,41 @@ async def wifi_task():
             print("WiFi task hiba:", e)
 
         await asyncio.sleep_ms(config.WIFI_RETRY_INTERVAL_S * 1000)
+
+
+async def live_task():
+    """
+    Valós idejű GPS küldés 2 másodpercenként.
+    A _live_buf-ból veszi a pontokat (gps_task tölti), majd POST-olja
+    a backend /api/live/{device_id} végpontra.
+    """
+    global _live_buf
+    while True:
+        await asyncio.sleep_ms(2000)
+        if not wifi_connected or not getattr(config, 'BACKEND_URL', ''):
+            continue
+        if not _live_buf:
+            continue
+        to_send  = _live_buf[:20]   # max 20 pont / küldés
+        _live_buf = _live_buf[20:]
+        try:
+            try:
+                import urequests as _http
+            except ImportError:
+                import requests as _http
+            body = json.dumps({
+                'device_id': config.DEVICE_ID,
+                'points':    to_send,
+            })
+            resp = _http.post(
+                config.BACKEND_URL.rstrip('/') + '/api/live/' + config.DEVICE_ID,
+                data=body,
+                headers={'Content-Type': 'application/json'},
+            )
+            resp.close()
+        except Exception as e:
+            print("Live: küldési hiba →", e)
+            _live_buf = to_send + _live_buf   # visszarakjuk ha hiba
 
 
 async def uplink_task():
@@ -900,6 +944,7 @@ async def main():
         display_task(),
         wifi_task(),
         uplink_task(),
+        live_task(),
         touch_task(),
     )
 

@@ -182,7 +182,11 @@ def lap_analysis_rows(laps: list) -> list[dict]:
             "lap_number":   lap.lap_number,
             "lap_time_ms":  lap.lap_time_ms,
             "is_best":      lap.lap_time_ms == best_ms and lap.is_valid,
-            "delta_ms":     lap.lap_time_ms - best_ms if lap.is_valid else 0,
-            "sector_times": lap.sector_times,
+            "delta_ms":       lap.lap_time_ms - best_ms if lap.is_valid else 0,
+            "sector_times":   lap.sector_times,
+            "max_lean_right":  lap.max_lean_right,
+            "max_lean_left":   lap.max_lean_left,
+            "peak_kamm_g":     lap.peak_kamm_g,
+            "peak_kamm_angle": lap.peak_kamm_angle,
         })
     return rows

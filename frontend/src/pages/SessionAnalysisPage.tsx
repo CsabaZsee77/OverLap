@@ -4,14 +4,16 @@ import {
   getSessionAnalysis, getLapDetail, compareLaps, getSession,
 } from '@/api/client'
 import type {
-  SessionAnalysis, LapDetail, LapCompare, LapAnalysisRow,
+  SessionAnalysis, LapDetail, LapCompare, LapAnalysisRow, TraceMetric,
 } from '@/api/types'
 import { fmtMs, fmtDelta, deltaClass, consistencyColor } from '@/utils/format'
-import StatCard   from '@/components/StatCard'
-import LapTable   from '@/components/LapTable'
-import SpeedChart from '@/components/SpeedChart'
-import DeltaChart from '@/components/DeltaChart'
-import TraceMap   from '@/components/TraceMap'
+import StatCard    from '@/components/StatCard'
+import LapTable    from '@/components/LapTable'
+import SpeedChart  from '@/components/SpeedChart'
+import DeltaChart  from '@/components/DeltaChart'
+import TraceMap    from '@/components/TraceMap'
+import KammCircle  from '@/components/KammCircle'
+import LeanHorizon from '@/components/LeanHorizon'
 
 export default function SessionAnalysisPage() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +31,7 @@ export default function SessionAnalysisPage() {
   const [playing,     setPlaying]     = useState(false)
   const [playheadMs,  setPlayheadMs]  = useState(0)
   const [playSpeed,   setPlaySpeed]   = useState(5)
+  const [metric,      setMetric]      = useState<TraceMetric>('speed')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const selectLap = useCallback(async (
@@ -190,25 +193,33 @@ export default function SessionAnalysisPage() {
           <div className="space-y-4">
             {/* GPS trace map */}
             <div className="bg-[#1a1d26] border border-gray-800 rounded-lg overflow-hidden">
-              <div className="px-4 py-2 border-b border-gray-800 text-xs text-gray-500 flex items-center justify-between">
-                <span>GPS Trace</span>
-                {selLap && (
-                  <span className="text-gray-400">Lap {selLap.lap_number} · {fmtMs(selLap.lap_time_ms)}</span>
-                )}
+              <div className="px-4 py-2 border-b border-gray-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">GPS Trace</span>
+                  {selLap && (
+                    <span className="text-xs text-gray-400">· Lap {selLap.lap_number} · {fmtMs(selLap.lap_time_ms)}</span>
+                  )}
+                </div>
+                {/* Metrika választó */}
+                <div className="flex gap-1">
+                  {(['speed', 'lean', 'lat_g', 'lon_g'] as TraceMetric[]).map(m => (
+                    <button key={m} onClick={() => setMetric(m)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                        metric === m
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                      }`}>
+                      {m === 'speed' ? 'km/h' : m === 'lean' ? 'dőlés' : m === 'lat_g' ? 'lat G' : 'lon G'}
+                    </button>
+                  ))}
+                </div>
               </div>
               <TraceMap
                 trace={lapDetail?.gps_trace ?? []}
                 height={260}
                 playheadIdx={playing || playheadMs > 0 ? playheadIdx : undefined}
+                metric={metric}
               />
-              {/* Speed color legend */}
-              <div className="px-4 py-2 flex items-center gap-3 border-t border-gray-800">
-                <span className="text-xs text-gray-500">Speed:</span>
-                <div className="flex-1 h-2 rounded-full" style={{
-                  background: 'linear-gradient(to right, rgb(50,200,255), rgb(255,200,30), rgb(255,50,0))'
-                }} />
-                <span className="text-xs text-gray-500">fast</span>
-              </div>
 
               {/* Replay vezérlők */}
               {(lapDetail?.gps_trace?.length ?? 0) > 0 && (
@@ -273,9 +284,34 @@ export default function SessionAnalysisPage() {
               )}
             </div>
 
-            {/* Speed curve */}
+            {/* IMU műszerek */}
             <div className="bg-[#1a1d26] border border-gray-800 rounded-lg">
               <div className="px-4 py-2 border-b border-gray-800 text-xs text-gray-500">
+                IMU csúcsértékek
+                {selLap && <span className="ml-1 text-gray-600">· Lap {selLap.lap_number}</span>}
+              </div>
+              <div className="flex items-center justify-around py-3 px-2">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-gray-600 uppercase tracking-wider">Kamm-kör</span>
+                  <KammCircle
+                    peakG={selLap?.peak_kamm_g ?? null}
+                    peakAngle={selLap?.peak_kamm_angle ?? null}
+                  />
+                </div>
+                <div className="w-px h-32 bg-gray-800" />
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-gray-600 uppercase tracking-wider">Max dőlés</span>
+                  <LeanHorizon
+                    leanRight={selLap?.max_lean_right ?? null}
+                    leanLeft={selLap?.max_lean_left ?? null}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Speed curve */}
+            <div className="bg-[#1a1d26] border border-gray-800 rounded-lg">
+              <div className="px-4 py-2 border-b border-gray-800 text-xs text-gray-800 text-xs text-gray-500">
                 Speed Profile (s-coordinate)
               </div>
               <div className="p-3">

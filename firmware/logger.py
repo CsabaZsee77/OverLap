@@ -178,6 +178,16 @@ class SessionLogger:
         except Exception as e:
             print("Logger: törlési hiba ({}) →".format(path), e)
 
+    def mark_session_uploaded(self):
+        """
+        Az aktív session _uploaded=True flaggel jelöli a fájlban.
+        Így bootkor a flush_pending nem küldi fel újra.
+        """
+        if self._session_data is None or self._session_path is None:
+            return
+        self._session_data['_uploaded'] = True
+        self._flush()
+
     def load_session(self, path):
         """
         Egy mentett session betöltése dict-ként (uplink.py-nak).

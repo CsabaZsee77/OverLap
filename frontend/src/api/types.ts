@@ -7,10 +7,14 @@ export interface GpsPoint {
   lon: number
   speed_kmh: number
   ts_ms: number
-  lean?:  number   // dőlésszög fokban
-  lat_g?: number   // lateral G
-  lon_g?: number   // longitudinal G
+  lean?:       number   // dőlésszög fokban (lap.py)
+  lean_deg?:   number   // alternatív (gps_task replace)
+  lat_g?:      number   // lateral G
+  lon_g?:      number   // longitudinal G
+  kamm_angle?: number   // irányvektor szöge
 }
+
+export type TraceMetric = 'speed' | 'lean' | 'lat_g' | 'lon_g'
 
 export interface SectorTime {
   name: string
@@ -115,11 +119,15 @@ export interface SectorBest {
 }
 
 export interface LapAnalysisRow {
-  lap_number: number
-  lap_time_ms: number
-  is_best: boolean
-  delta_ms: number | null
-  sector_times: SectorTime[]
+  lap_number:     number
+  lap_time_ms:    number
+  is_best:        boolean
+  delta_ms:       number | null
+  sector_times:   SectorTime[]
+  max_lean_right:  number | null
+  max_lean_left:   number | null
+  peak_kamm_g:     number | null
+  peak_kamm_angle: number | null
 }
 
 export interface SessionAnalysis {

@@ -29,14 +29,15 @@ STATE_IN_LAP     = 'in_lap'      # mérés folyamatban
 
 class LapResult:
     """Egy rögzített kör / szakasz eredménye."""
-    __slots__ = ('lap_time_ms', 'is_best', 'delta_ms', 'lap_number', 'cross_ts_ms')
+    __slots__ = ('lap_time_ms', 'is_best', 'delta_ms', 'lap_number', 'cross_ts_ms', 'trace')
 
-    def __init__(self, lap_time_ms, is_best, delta_ms, lap_number, cross_ts_ms):
+    def __init__(self, lap_time_ms, is_best, delta_ms, lap_number, cross_ts_ms, trace=None):
         self.lap_time_ms  = lap_time_ms
         self.is_best      = is_best
         self.delta_ms     = delta_ms      # negatív = gyorsabb a best lapnál
         self.lap_number   = lap_number
         self.cross_ts_ms  = cross_ts_ms   # UTC-helyett ticks_ms alapú
+        self.trace        = trace or []   # GPS+IMU trace az egész körből
 
 
 class LapDetector:
@@ -317,22 +318,25 @@ class LapDetector:
         if is_best:
             self._best_lap_ms = elapsed_ms
 
+        completed_trace    = self.current_trace   # mentés reset előtt
         self._last_cross_ms = t_cross
         self.current_trace  = []
 
         label = "[stage]" if self.mode == MODE_STAGE else ""
-        print("LapDetector{}: #{} → {:.3f}s {}".format(
+        print("LapDetector{}: #{} → {:.3f}s {} ({} trace pont)".format(
             label,
             self._lap_count,
             elapsed_ms / 1000.0,
-            "★ BEST" if is_best else "(+{:.3f}s)".format(delta_ms / 1000.0)
+            "★ BEST" if is_best else "(+{:.3f}s)".format(delta_ms / 1000.0),
+            len(completed_trace)
         ))
         return LapResult(
             lap_time_ms = elapsed_ms,
             is_best     = is_best,
             delta_ms    = delta_ms,
             lap_number  = self._lap_count,
-            cross_ts_ms = t_cross
+            cross_ts_ms = t_cross,
+            trace       = completed_trace,
         )
 
     def _update_prev(self, lat, lon, ts_ms):

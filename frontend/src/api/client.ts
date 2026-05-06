@@ -67,6 +67,29 @@ export const getLeaderboard = (trackId: number, period = 'all', limit = 20) =>
 export const getTrackFirmwareJsonUrl = (id: number): string =>
   `/api/tracks/${id}/firmware-json`
 
+// ── Live GPS ─────────────────────────────────────────────────────────────────
+
+export interface LiveDevice {
+  device_id:   string
+  lap_number:  number | null
+  updated_at:  number
+  point_count: number
+}
+
+export interface LiveState {
+  device_id:  string
+  lap_number: number | null
+  points:     { lat: number; lon: number; speed_kmh: number; ts_ms: number; lean_deg?: number; lat_g?: number; lon_g?: number }[]
+  updated_at: number
+  stale:      boolean
+}
+
+export const getLiveDevices = () =>
+  api.get<LiveDevice[]>('/live/').then(r => r.data)
+
+export const getLiveState = (deviceId: string) =>
+  api.get<LiveState>(`/live/${deviceId}`).then(r => r.data)
+
 // ── Dev ───────────────────────────────────────────────────────────────────────
 
 export const seedDemoData = () =>

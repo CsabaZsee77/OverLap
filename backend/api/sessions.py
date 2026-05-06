@@ -46,14 +46,19 @@ def upload_session(payload: SessionUpload, db: DBSession = Depends(get_db)):
         sector_times = _zip_sector_times(lap_data.sector_times_ms, sector_names)
 
         lap = Lap(
-            session_id   = session.id,
-            lap_number   = lap_data.lap_number,
-            lap_time_ms  = lap_data.lap_time_ms,
-            lap_start_ts = lap_data.lap_start_ts,
-            lap_end_ts   = lap_data.lap_end_ts,
-            is_valid     = True,
+            session_id      = session.id,
+            lap_number      = lap_data.lap_number,
+            lap_time_ms     = lap_data.lap_time_ms,
+            lap_start_ts    = lap_data.lap_start_ts,
+            lap_end_ts      = lap_data.lap_end_ts,
+            is_valid        = True,
+            max_speed_kmh   = lap_data.max_speed_kmh,
+            max_lean_right  = lap_data.max_lean_right,
+            max_lean_left   = lap_data.max_lean_left,
+            peak_kamm_g     = lap_data.peak_kamm_g,
+            peak_kamm_angle = lap_data.peak_kamm_angle,
         )
-        lap.gps_trace    = [p.model_dump() for p in lap_data.gps_trace]
+        lap.gps_trace    = [p.model_dump(exclude_none=True) for p in lap_data.gps_trace]
         lap.sector_times = sector_times
         db.add(lap)
 

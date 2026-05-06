@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from api import tracks, sessions, analysis
+from api import tracks, sessions, analysis, live
 
 # ============================================================
 # APP
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(tracks.router,   prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
+app.include_router(live.router,     prefix="/api")
 
 # ============================================================
 # STARTUP — DB init

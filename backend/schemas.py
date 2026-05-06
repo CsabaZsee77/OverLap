@@ -78,10 +78,22 @@ class TrackListItem(BaseModel):
 # ============================================================
 
 class GpsPointSchema(BaseModel):
-    lat:       float
-    lon:       float
-    speed_kmh: float = 0.0
-    ts_ms:     int   = 0       # ticks_ms a firmwareből
+    lat:         float
+    lon:         float
+    speed_kmh:   float = 0.0
+    ts_ms:       int   = 0
+    lean:        float | None = None   # dőlésszög fokban (lap.py: 'lean')
+    lean_deg:    float | None = None   # alternatív mező neve (gps_task replace)
+    lat_g:       float | None = None   # oldalsó G-erő
+    lon_g:       float | None = None   # hosszirányú G-erő
+    kamm_angle:  float | None = None   # irányvektor szöge
+
+    model_config = {"extra": "ignore"}
+
+    @property
+    def lean_val(self) -> float | None:
+        """lean vagy lean_deg, amelyik nem None."""
+        return self.lean if self.lean is not None else self.lean_deg
 
 
 class SectorTimeSchema(BaseModel):
@@ -90,12 +102,17 @@ class SectorTimeSchema(BaseModel):
 
 
 class LapUpload(BaseModel):
-    lap_number:      int
-    lap_time_ms:     int
-    lap_start_ts:    int | None = None
-    lap_end_ts:      int | None = None
-    sector_times_ms: list[int]  = Field(default_factory=list)
-    gps_trace:       list[GpsPointSchema] = Field(default_factory=list)
+    lap_number:       int
+    lap_time_ms:      int
+    lap_start_ts:     int | None = None
+    lap_end_ts:       int | None = None
+    sector_times_ms:  list[int]  = Field(default_factory=list)
+    gps_trace:        list[GpsPointSchema] = Field(default_factory=list)
+    max_speed_kmh:    float | None = None
+    max_lean_right:   float | None = None
+    max_lean_left:    float | None = None
+    peak_kamm_g:      float | None = None
+    peak_kamm_angle:  float | None = None
 
 
 class SessionUpload(BaseModel):
@@ -168,11 +185,15 @@ class SpeedPoint(BaseModel):
 
 
 class LapAnalysisRow(BaseModel):
-    lap_number:   int
-    lap_time_ms:  int
-    is_best:      bool
-    delta_ms:     int       # vs best lap
-    sector_times: list[SectorTimeSchema]
+    lap_number:     int
+    lap_time_ms:    int
+    is_best:        bool
+    delta_ms:       int       # vs best lap
+    sector_times:   list[SectorTimeSchema]
+    max_lean_right:  float | None = None
+    max_lean_left:   float | None = None
+    peak_kamm_g:     float | None = None
+    peak_kamm_angle: float | None = None
 
 
 class SessionAnalysis(BaseModel):

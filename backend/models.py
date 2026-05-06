@@ -157,6 +157,13 @@ class Lap(Base):
     lap_start_ts: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lap_end_ts:   Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Per-kör IMU csúcsértékek (firmware v1.3+)
+    max_speed_kmh:   Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_lean_right:  Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_lean_left:   Mapped[float | None] = mapped_column(Float, nullable=True)
+    peak_kamm_g:     Mapped[float | None] = mapped_column(Float, nullable=True)
+    peak_kamm_angle: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # GPS trace — [{lat, lon, speed_kmh, ts_ms}, ...]
     gps_trace_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 

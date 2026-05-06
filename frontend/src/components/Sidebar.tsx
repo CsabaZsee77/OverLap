@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 const NAV = [
   { to: '/',            label: 'Sessions',       icon: '📋' },
+  { to: '/live',        label: 'Live GPS',       icon: '📡' },
   { to: '/tracks',      label: 'Track Explorer', icon: '🗺️' },
   { to: '/leaderboard', label: 'Leaderboard',    icon: '🏆' },
 ]

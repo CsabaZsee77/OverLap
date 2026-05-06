@@ -60,11 +60,15 @@ def session_analysis(session_id: int, db: DBSession = Depends(get_db)):
     laps_out = []
     for r in rows:
         laps_out.append(LapAnalysisRow(
-            lap_number   = r["lap_number"],
-            lap_time_ms  = r["lap_time_ms"],
-            is_best      = r["is_best"],
-            delta_ms     = r["delta_ms"],
-            sector_times = [SectorTimeSchema(**st) for st in r["sector_times"]],
+            lap_number     = r["lap_number"],
+            lap_time_ms    = r["lap_time_ms"],
+            is_best        = r["is_best"],
+            delta_ms       = r["delta_ms"],
+            sector_times   = [SectorTimeSchema(**st) for st in r["sector_times"]],
+            max_lean_right  = r.get("max_lean_right"),
+            max_lean_left   = r.get("max_lean_left"),
+            peak_kamm_g     = r.get("peak_kamm_g"),
+            peak_kamm_angle = r.get("peak_kamm_angle"),
         ))
 
     return SessionAnalysis(

@@ -6,6 +6,7 @@ import SessionAnalysisPage  from '@/pages/SessionAnalysisPage'
 import TracksPage           from '@/pages/TracksPage'
 import TrackEditorPage      from '@/pages/TrackEditorPage'
 import LeaderboardPage      from '@/pages/LeaderboardPage'
+import LivePage             from '@/pages/LivePage'
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -49,6 +50,7 @@ export default function App() {
             <Routes>
               <Route path="/"                  element={<SessionsPage />} />
               <Route path="/session/:id"       element={<SessionAnalysisPage />} />
+              <Route path="/live"              element={<LivePage />} />
               <Route path="/tracks"            element={<TracksPage />} />
               <Route path="/tracks/new"        element={<TrackEditorPage />} />
               <Route path="/tracks/:id"        element={<TrackEditorPage />} />
