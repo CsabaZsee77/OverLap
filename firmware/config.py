@@ -64,8 +64,8 @@ LOG_DIR  = '/sd/overlap_logs'
 # WIFI
 # ============================================================
 # Telefon hotspot adatai — megszakadás esetén auto-újracsatlakozás
-WIFI_SSID  = 'Csaba iPhone-ja'
-WIFI_PASS  = '234567891'
+WIFI_SSID  = 'kakucsring'
+WIFI_PASS  = ''
 WIFI_RETRY_INTERVAL_S = 30
 
 # ============================================================
