@@ -68,6 +68,7 @@ class Uplink:
                     endpoint,
                     data=body,
                     headers={'Content-Type': 'application/json'},
+                    timeout=15,
                 )
                 status = resp.status_code
                 resp.close()
@@ -83,10 +84,7 @@ class Uplink:
                 print("Uplink: hálózati hiba ({}) →".format(attempt + 1), e)
                 return False   # WiFi kiesés — ne várjunk, task retry-ol
 
-            if attempt < retries - 1:
-                wait = RETRY_DELAY_S[min(attempt, len(RETRY_DELAY_S) - 1)]
-                print("Uplink: {}s várakozás...".format(wait))
-                time.sleep(wait)
+            # Nincs blocking sleep — az async task 10s-onként retry-ol úgyis
 
         print("Uplink: SIKERTELEN — offline sor")
         return False
@@ -142,7 +140,7 @@ class Uplink:
                 import urequests as _http
             except ImportError:
                 import requests as _http
-            resp = _http.get(self._url + '/api/health')
+            resp = _http.get(self._url + '/api/health', timeout=5)
             ok   = resp.status_code == 200
             resp.close()
             return ok

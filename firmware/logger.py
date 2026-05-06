@@ -83,8 +83,12 @@ class SessionLogger:
         }
         fname = 'session_{}_{}.json'.format(
             device_id.replace('/', '_'), ts)
-        self._session_path = '{}/{}'.format(self._log_dir, fname) if self._log_dir else None
-        print("Logger: session kezdve ({})".format(fname))
+        if self._log_dir:
+            self._session_path = '{}/{}'.format(self._log_dir, fname)
+            print("Logger: session kezdve ({})".format(fname))
+        else:
+            self._session_path = None
+            print("Logger: FIGYELMEZTETÉS — nincs írható könyvtár! Körök csak RAM-ban lesznek.")
 
     def add_lap(self, lap_number, lap_time_ms,
                 lap_start_ts=None, lap_end_ts=None,

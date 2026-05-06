@@ -118,14 +118,36 @@ def run_ota(force=False):
     wlan.active(True)
 
     if not wlan.isconnected():
-        ssid = getattr(config, 'WIFI_SSID', '')
-        if not ssid:
-            status('WIFI_SSID nincs', 'config.py-ban add meg', RED)
+        networks = getattr(config, 'WIFI_NETWORKS', None)
+        if not networks:
+            ssid = getattr(config, 'WIFI_SSID', '')
+            pwd  = getattr(config, 'WIFI_PASS', '')
+            if not ssid:
+                status('WiFi nincs beallitva', 'config.py: WIFI_NETWORKS vagy WIFI_SSID', RED)
+                time.sleep_ms(2000)
+                return
+            networks = [(ssid, pwd)]
+
+        # Elérhető hálózatok keresése
+        status('WiFi', 'Halozatok keresese...')
+        try:
+            available = {s[0].decode() for s in wlan.scan()}
+        except Exception:
+            available = set()
+
+        ssid, pwd = None, None
+        for s, p in networks:
+            if s in available:
+                ssid, pwd = s, p
+                break
+
+        if ssid is None:
+            status('WiFi: nem talalhato', 'Egyik halozat sem elerheto', RED)
             time.sleep_ms(2000)
             return
 
         status('WiFi: ' + ssid, 'Csatlakozas...')
-        wlan.connect(ssid, config.WIFI_PASS)
+        wlan.connect(ssid, pwd)
         t = time.ticks_ms()
         dots = 0
         while not wlan.isconnected():

@@ -102,6 +102,7 @@ lap_max_speed_kmh = 0.0   # aktuális kör maximuma (körönként nullázódik)
 prev_lap_max_kmh  = 0.0   # előző befejezett kör max sebessége (kijelzőhöz)
 prev_lap_ms       = None
 wifi_connected    = False
+_wifi_next_idx    = 0      # reconnect körkörösen próbálja a hálózatokat
 battery_pct       = None
 _live_buf         = []    # valós idejű GPS buffer (live_task olvassa)
 track_cfg         = None
@@ -144,23 +145,69 @@ gps.begin()
 # WIFI
 # ============================================================
 
+def _get_wifi_networks():
+    """Visszaadja a WIFI_NETWORKS listát, vagy legacy WIFI_SSID-ből épít egyet."""
+    networks = getattr(config, 'WIFI_NETWORKS', None)
+    if networks:
+        return networks
+    ssid = getattr(config, 'WIFI_SSID', '')
+    if ssid:
+        return [(ssid, getattr(config, 'WIFI_PASS', ''))]
+    return []
+
+
 def connect_wifi():
+    """Boot-kori csatlakozás: scan alapján választja a legjobb hálózatot."""
     global wifi_connected
-    if not config.WIFI_SSID:
-        print("WiFi: SSID nincs beállítva — offline mód")
-        return
     try:
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
-        if not wlan.isconnected():
-            print("WiFi: csatlakozás '{}'...".format(config.WIFI_SSID))
-            wlan.connect(config.WIFI_SSID, config.WIFI_PASS)
-        wifi_connected = wlan.isconnected()
-        if wifi_connected:
-            print("WiFi: OK —", wlan.ifconfig()[0])
+        if wlan.isconnected():
+            wifi_connected = True
+            return
+
+        networks = _get_wifi_networks()
+        if not networks:
+            print("WiFi: nincs beállítva — offline mód")
+            return
+
+        print("WiFi: elérhető hálózatok keresése...")
+        try:
+            available = {s[0].decode() for s in wlan.scan()}
+        except Exception:
+            available = set()
+
+        for ssid, pwd in networks:
+            if ssid in available:
+                print("WiFi: csatlakozás '{}'...".format(ssid))
+                wlan.connect(ssid, pwd)
+                wifi_connected = wlan.isconnected()
+                if wifi_connected:
+                    print("WiFi: OK —", wlan.ifconfig()[0])
+                return
+
+        print("WiFi: egyik hálózat sem elérhető")
+        wifi_connected = False
     except Exception as e:
         print("WiFi hiba:", e)
         wifi_connected = False
+
+
+def reconnect_wifi():
+    """Reconnect async context-ben: scan nélkül, körkörösen próbálja a hálózatokat."""
+    global wifi_connected, _wifi_next_idx
+    try:
+        networks = _get_wifi_networks()
+        if not networks:
+            return
+        wlan = network.WLAN(network.STA_IF)
+        ssid, pwd = networks[_wifi_next_idx % len(networks)]
+        _wifi_next_idx += 1
+        print("WiFi: reconnect '{}'...".format(ssid))
+        wlan.connect(ssid, pwd)
+        # wlan.connect() non-blocking — wifi_task 5s múlva ellenőrzi
+    except Exception as e:
+        print("WiFi reconnect hiba:", e)
 
 connect_wifi()
 
@@ -508,7 +555,8 @@ def _on_lap_complete(result, ts):
         result.delta_ms / 1000.0
     ))
     if result.is_best:
-        _beep(1400, 100); time.sleep_ms(120); _beep(1800, 200)
+        _beep(1400, 100)
+        _beep(1800, 200)
     else:
         _beep(1000, 300)
 
@@ -543,7 +591,9 @@ def _on_lap_complete(result, ts):
         session_peak_kamm_angle = this_kamm_angle
 
     # STATS képernyő frissítése, ha éppen azt nézi
-    disp._force_redraw = True
+    # MODE_MAIN (0) incremental update-tel kezeli — fillScreen nélkül
+    if disp._mode != 0:
+        disp._force_redraw = True
 
     # Kör hozzáadása a kijelző listához (max 10 kör)
     lap_history.append({
@@ -573,6 +623,12 @@ def _on_lap_complete(result, ts):
     # Reset lap start
     lap_start_ts = result.cross_ts_ms
     sec_det.start_lap(result.cross_ts_ms)
+
+    # Azonnali flush — ne csak 30s-onként, körátlépéskor mindenképp fájlba kerül
+    try:
+        logger._flush()
+    except Exception as _e:
+        print("Logger flush hiba lapnál:", _e)
 
 
 def _flush_telegram_queue():
@@ -739,9 +795,10 @@ async def wifi_task():
             wlan = network.WLAN(network.STA_IF)
             wifi_connected = wlan.isconnected()
 
-            if not wifi_connected and config.WIFI_SSID:
+            has_wifi_cfg = bool(_get_wifi_networks())
+            if not wifi_connected and has_wifi_cfg:
                 print("WiFi: reconnect kísérlet...")
-                connect_wifi()
+                reconnect_wifi()          # non-blocking, scan nélkül
                 await asyncio.sleep_ms(5000)
                 wifi_connected = wlan.isconnected()
                 if wifi_connected:
@@ -773,6 +830,11 @@ async def live_task():
     a backend /api/live/{device_id} végpontra.
     """
     global _live_buf
+    try:
+        import urequests as _http
+    except ImportError:
+        import requests as _http
+
     while True:
         await asyncio.sleep_ms(2000)
         if not wifi_connected or not getattr(config, 'BACKEND_URL', ''):
@@ -787,10 +849,6 @@ async def live_task():
         elapsed_ms  = time.ticks_diff(time.ticks_ms(), lap_start_ts) if lap_start_ts is not None else None
 
         try:
-            try:
-                import urequests as _http
-            except ImportError:
-                import requests as _http
             body = json.dumps({
                 'device_id':      config.DEVICE_ID,
                 'points':         to_send,
@@ -801,6 +859,7 @@ async def live_task():
                 config.BACKEND_URL.rstrip('/') + '/api/live/' + config.DEVICE_ID,
                 data=body,
                 headers={'Content-Type': 'application/json'},
+                timeout=5,
             )
             resp.close()
         except Exception as e:
@@ -961,6 +1020,9 @@ async def main():
         display_task(),
         touch_task(),
         log_flush_task(),
+        wifi_task(),
+        live_task(),
+        uplink_task(),
     )
 
 print("MotoMeter READY")
