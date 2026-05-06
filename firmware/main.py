@@ -155,7 +155,13 @@ def connect_wifi():
         if not wlan.isconnected():
             print("WiFi: csatlakozás '{}'...".format(config.WIFI_SSID))
             wlan.connect(config.WIFI_SSID, config.WIFI_PASS)
+            for _ in range(20):
+                if wlan.isconnected():
+                    break
+                time.sleep(0.5)
         wifi_connected = wlan.isconnected()
+        if wifi_connected:
+            print("WiFi: OK —", wlan.ifconfig()[0])
     except Exception as e:
         print("WiFi hiba:", e)
         wifi_connected = False
