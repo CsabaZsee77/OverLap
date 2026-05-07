@@ -90,8 +90,8 @@ ACTIVE_TRACK_ID = None   # <-- állítsd be a kívánt pálya ID-ra
 # 2. Küldj neki: /newbot  → megkapod a BOT_TOKEN-t
 # 3. Nyisd meg a botodat, küldj egy üzenetet, majd keresd:
 #    @userinfobot  → megkapod a CHAT_ID-t
-TELEGRAM_BOT_TOKEN = '8630230971:AAFe_XwgznHmNfzE5Kq_P7kcD7-DFkGZUHs'
-TELEGRAM_CHAT_ID   = '8133479839'
+TELEGRAM_BOT_TOKEN = ''   # @BotFather token — csak a device-on töltsd ki, ne commitold!
+TELEGRAM_CHAT_ID   = ''   # @userinfobot chat ID — csak a device-on töltsd ki, ne commitold!
 
 # ============================================================
 # IMU BACKEND

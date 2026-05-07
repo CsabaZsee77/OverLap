@@ -2,8 +2,8 @@
 import json
 import requests
 
-BOT_TOKEN = '8630230971:AAFe_XwgznHmNfzE5Kq_P7kcD7-DFkGZUHs'
-CHAT_ID   = '8133479839'
+BOT_TOKEN = ''   # @BotFather token — ne commitold!
+CHAT_ID   = ''   # @userinfobot chat ID — ne commitold!
 TRACK_NAME = 'Kakucs Ring'
 
 SESSION_DATA = r'C:\Users\zsigm\OneDrive\Dokumentumok\GitHub\MotoMeter\session_log.json'
