@@ -141,7 +141,10 @@ lap_history       = []
 wifi_connected    = False
 battery_pct       = 100
 session_active    = False
-max_speed_session = 0.0
+max_speed_session    = 0.0
+session_lean_right   = 0.0
+session_lean_left    = 0.0
+session_kamm_g       = 0.0
 
 telegram       = TelegramNotifier(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
 telegram_queue = []
@@ -204,6 +207,7 @@ def _start_lap():
 
 def _finish_lap():
     global _sector_best, max_speed_session
+    global session_lean_right, session_lean_left, session_kamm_g
     lap_ms = int(_vt() - _lap_start_v)
 
     # Szektoros best frissítés
@@ -215,6 +219,18 @@ def _finish_lap():
     spd = SPEED_TGT + random.uniform(-SPEED_SCT, SPEED_SCT)
     if spd > max_speed_session:
         max_speed_session = spd
+
+    # Session lean/kamm maximumok gyűjtése
+    if fake_lean.peak_right > session_lean_right:
+        session_lean_right = fake_lean.peak_right
+    if fake_lean.peak_left > session_lean_left:
+        session_lean_left = fake_lean.peak_left
+    lat_g = abs(fake_lean.lateral_g)
+    lon_g = abs(fake_lean.lon_g)
+    kamm_g = (lat_g ** 2 + lon_g ** 2) ** 0.5
+    if kamm_g > session_kamm_g:
+        session_kamm_g = kamm_g
+    fake_lean.reset_peaks()
 
     # Hang
     try:
@@ -231,7 +247,6 @@ def _finish_lap():
     if is_best:
         try:
             M5.Speaker.tone(1400, 100)
-            time.sleep_ms(120)
             M5.Speaker.tone(1800, 200)
         except Exception:
             pass
@@ -358,16 +373,19 @@ async def display_task():
         lap_start_ts = _lap_start_ts_for_display() if session_active else None
 
         disp.update(
-            gps            = gps,
-            lap_detector   = lap_det,
-            max_speed_kmh  = max_speed_session,
-            wifi_connected = wifi_connected,
-            predicted_ms   = pred_ms,
-            prev_lap_ms    = None,
-            battery_pct    = battery_pct,
-            lap_start_ts   = lap_start_ts,
-            lap_history    = lap_history,
-            lean           = fake_lean,
+            gps                = gps,
+            lap_detector       = lap_det,
+            max_speed_kmh      = max_speed_session,
+            wifi_connected     = wifi_connected,
+            predicted_ms       = pred_ms,
+            prev_lap_ms        = None,
+            battery_pct        = battery_pct,
+            lap_start_ts       = lap_start_ts,
+            lap_history        = lap_history,
+            lean               = fake_lean,
+            session_lean_right = session_lean_right,
+            session_lean_left  = session_lean_left,
+            session_kamm_g     = session_kamm_g,
         )
         await asyncio.sleep_ms(200)
 
