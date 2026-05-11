@@ -444,7 +444,7 @@ async def imu_task():
             lat_g = lean.lateral_g
             lon_g = lean.lon_g
             total_g = math.sqrt(lat_g * lat_g + lon_g * lon_g)
-            if total_g > lap_peak_kamm_g:
+            if total_g < 5.0 and total_g > lap_peak_kamm_g:
                 lap_peak_kamm_g    = total_g
                 lap_peak_kamm_angle = math.degrees(math.atan2(lat_g, lon_g)) % 360
         await asyncio.sleep_ms(40)    # 25 Hz

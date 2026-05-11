@@ -368,9 +368,10 @@ class LeanSensor:
 
     @property
     def lateral_g(self):
-        """Oldalirányú G-erő (g). Kiegyensúlyozott kanyarban ≈ tan(lean_angle)."""
+        """Oldalirányú G-erő (g). Kiegyensúlyozott kanyarban ≈ tan(lean_angle), ±80°-ra clampelve."""
         try:
-            return math.tan(math.radians(self._angle))
+            clamped = max(-80.0, min(80.0, self._angle))
+            return math.tan(math.radians(clamped))
         except Exception:
             return 0.0
 

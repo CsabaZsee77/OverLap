@@ -127,7 +127,7 @@ class SessionLogger:
             'gps_trace':        trace_dicts,
             'max_speed_kmh':    round(max_speed_kmh, 1) if max_speed_kmh else None,
             'max_lean_right':   round(max_lean_right, 1) if max_lean_right else None,
-            'max_lean_left':    round(max_lean_left, 1) if max_lean_left else None,
+            'max_lean_left':    round(max_lean_left, 1) if max_lean_left is not None else None,
             'peak_kamm_g':      round(peak_kamm_g, 3) if peak_kamm_g else None,
             'peak_kamm_angle':  round(peak_kamm_angle, 1) if peak_kamm_angle else None,
         }
